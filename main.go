@@ -7,15 +7,22 @@ import (
 )
 
 func main() {
-	pts = []Point{
+	pts := []Point{
 		{0, 2},
 		{1, 3},
 		{2, 9},
 		{3, 1},
 	}
+	weights := []float64{
+		1,
+		1,
+		1,
+		1,
+	}
+
 	n := 100
 
-	elem := NewElement(pts)
+	elem := NewElement(pts, weights)
 	elem.PrintShapeFuncs(os.Stdout, n)
 	//elem.PrintFunc(os.Stdout, n)
 }
@@ -36,14 +43,27 @@ type Node struct {
 	Xmain float64
 	Xzero []float64
 	Val   float64
+	Weight float64
 }
 
-func NewNode(p Point, xZeros []float64) Node {
+func NewNode(p Point, xZeros []float64, weight float64) Node {
 	return Node{
 		Xmain: p.X,
-		Val:   p.Y,
 		Xzero: xZeros,
+		Val:   p.Y,
+		Weight: weight,
 	}
+}
+
+// Deriv returns the derivative of the shape function at x.
+func (n Node) Deriv(x float64) float64 {
+	u := n.Val
+	dudx := 0.0
+	for _, x0 := range n.Xzero {
+		dudx = 1 / (n.Xmain - x0) * u + (x - x0) / (n.Xmain - x0) * dudx
+		u *= (x - x0) / (n.Xmain - x0)
+	}
+	return dudx
 }
 
 // Sample returns the value of the shape function at x.
@@ -55,6 +75,20 @@ func (n Node) Sample(x float64) float64 {
 	return u
 }
 
+// DerivWeight returns the derivative of the weight function at x.
+func (n Node) DerivWeight(x float64) float64 {
+	u := n.Weight
+	dudx := 0.0
+	for _, x0 := range n.Xzero {
+		dudx = 1 / (n.Xmain - x0) * u + (x - x0) / (n.Xmain - x0) * dudx
+		u *= (x - x0) / (n.Xmain - x0)
+	}
+	return dudx
+}
+
+// SampleWeight returns the value of the weight function at x.
+func (n Node) SampleWeight(x float64) float64 {return n.Sample(x) / n.Val * n.Weight}
+
 // Element holds a collection of nodes comprising a finite element. The
 // element is calibrated to a particular (approximate) solution and can be
 // queried to provide said solution at various points within the element.
@@ -63,7 +97,7 @@ type Element struct {
 	Left, Right float64
 }
 
-func NewElement(pts []Point) *Element {
+func NewElement(pts []Point, weights []float64) *Element {
 	e := &Element{Left: pts[0].X, Right: pts[len(pts)-1].X}
 	xs := []float64{}
 	for _, p := range pts {
@@ -73,7 +107,7 @@ func NewElement(pts []Point) *Element {
 	for i, p := range pts {
 		xZeros := append([]float64{}, xs[:i]...)
 		xZeros = append(xZeros, xs[i+1:]...)
-		e.Nodes = append(e.Nodes, NewNode(p, xZeros))
+		e.Nodes = append(e.Nodes, NewNode(p, xZeros, weights[i]))
 	}
 	return e
 }
@@ -89,14 +123,30 @@ func (e *Element) Interpolate(x float64) float64 {
 	return u
 }
 
+func (e *Element) Deriv(x float64) float64 {
+	if x < e.Left || x > e.Right {
+		return 0
+	}
+	u := 0.0
+	for _, n := range e.Nodes {
+		u += n.Deriv(x)
+	}
+	return u
+}
+
 func (e *Element) PrintFunc(w io.Writer, nsamples int) {
 	xrange := e.Right - e.Left
 	for i := -1 * nsamples / 10; i < nsamples+2*nsamples/10; i++ {
 		x := e.Left + xrange*float64(i)/float64(nsamples)
-		fmt.Fprintf(w, "%v\t%v\n", x, e.Interpolate(x))
+		fmt.Fprintf(w, "%v\t%v\t%v\n", x, e.Interpolate(x), e.Deriv(x))
 	}
 }
 
+// PrintShapeFuncs prints the shape functions and their derivatives in tab-separated form
+// with nsamples evenly spaced over the element's domain (one sample per line) in the form:
+//
+//    [x]	[Node1-shape(x)]	[Node1-shapederiv(x)]	[Node2-shape(x)]	...
+//
 func (e *Element) PrintShapeFuncs(w io.Writer, nsamples int) {
 	xrange := e.Right - e.Left
 	for i := -1 * nsamples / 10; i < nsamples+2*nsamples/10; i++ {
@@ -104,9 +154,9 @@ func (e *Element) PrintShapeFuncs(w io.Writer, nsamples int) {
 		fmt.Fprintf(w, "%v", x)
 		for _, n := range e.Nodes {
 			if x < e.Left || x > e.Right {
-				fmt.Fprintf(w, "\t0")
+				fmt.Fprintf(w, "\t0\t0")
 			} else {
-				fmt.Fprintf(w, "\t%v", n.Sample(x))
+				fmt.Fprintf(w, "\t%v\t%v", n.Sample(x), n.Deriv(x))
 			}
 		}
 		fmt.Fprintf(w, "\n")
