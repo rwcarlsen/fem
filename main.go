@@ -65,6 +65,16 @@ type NodeId int
 type Mesh struct {
 	Elems []*Element
 	Nodes []*Node
+	NodeIds map[*Node]NodeId
+	Left, Right Boundary
+	nextId int
+}
+
+// aka essential boundary condition matrix
+func (m *Mesh) essentialBC() *mat.Mat64 {
+	for _, e := range m.Elems {
+		
+	}
 }
 
 func (m *Mesh) Interpolate(x float64) float64 {
@@ -76,12 +86,36 @@ func (m *Mesh) Interpolate(x float64) float64 {
 	panic("cannot interpolate out of bounds on mesh")
 }
 
+func (m *Mesh) addNodes(ns ...*Node) {
+	for _, n := range ns {
+		m.NodeIds[n] = m.nextId
+		m.Nodes = append(m.Nodes, n)
+		m.nextId++
+	}
+}
+
+type BoundaryType int
+
+const (
+	Essential BoundaryType = iota
+	Dirichlet
+)
+
+type Boundary {
+	Val float64
+	Type BoundaryType
+}
+
 // NewMesh creates a simply-connected mesh with nodes at the specified points and degree nodes per element.
-func NewMesh(nodePos []float64, degree int) (*Mesh, error) {
-	m := &Mesh{}
+func NewMesh(nodePos []float64, degree int, left, right Boundary) (*Mesh, error) {
+	m := &Mesh{NodeIds: map[*Node]NodeId{}, Left: left, Right: right}
 	if (len(nodePos)-1) % (degree-1) != 0 {
 		return nil, fmt.Errorf("incompatible mesh degree (%v) and node count (%v)", degree, len(nodePos))
 	}
+	
+	for i := range nodePos {
+	}
+	
 	nElems := (len(nodePos)-1) / (degree-1)
 	for i := 0; i < nElems; i++ {
 		pts := make([]Point, degree)
@@ -94,9 +128,9 @@ func NewMesh(nodePos []float64, degree int) (*Mesh, error) {
 		m.Elems = append(m.Elems, elem)
 		
 		if i == 0 {
-			m.Nodes = append(m.Nodes, elem.Nodes[0])
+			m.addNodes(elem.Nodes[0])
 		}
-		m.Nodes = append(m.Nodes, elem.Nodes[1:]...)
+		m.addNodes(elem.Nodes[1:]...)
 		
 		// have adjacent elements share edge node
 		if i > 0 {
@@ -107,19 +141,22 @@ func NewMesh(nodePos []float64, degree int) (*Mesh, error) {
 	return m, nil
 }
 
+// stiffness matrix
 func (m *Mesh) BuildSystem(k Kernel) (A, b mat64.Dense) {
 	for i, e := range m.Elems {
-		fn := func(x float64) float64 {
-			pars := &KernelParams{
-				X: x,
-				U: e.Interpolate(x),
-				DU: e.Deriv(x),
-				W: e.InterpolateWeight(x),
-				DW: e.DerivWeight(x),
+		for j, n := range e.Nodes {
+			fn := func(x float64) float64 {
+				pars := &KernelParams{
+					X: x,
+					U: n.Sample(x),
+					GradU: n.Deriv(x),
+					W: n.SampleWeight(x),
+					GradW: n.DerivWeight(x),
+				}
+				return k.Residual(pars)
 			}
-			return k.Residual(pars)
+			residual := quad.Fixed(fn, e.Left(), e.Right(), len(e.Nodes), quad.Legendre{}, 0)
 		}
-		residual := quad.Fixed(fn, e.Left(), e.Right(), len(e.Nodes), quad.Legendre{}, 0)
 	}
 }
 
@@ -137,15 +174,18 @@ type Point struct {
 //
 type Node struct {
 	Xmain float64
-	Xzero []float64
+	LeftZeros []float64
+	// RightZeros is only non-nil if the node is "shared" between two elements
+	RightZeros []float64
 	Val   float64
 	Weight float64
 }
 
-func NewNode(p Point, xZeros []float64, weight float64) *Node {
+func NewNode(p Point, leftZeros, rightZeros []float64, weight float64) *Node {
 	return &Node{
 		Xmain: p.X,
-		Xzero: xZeros,
+		LeftZeros: leftZeros,
+		RightZeros: rightZeros,
 		Val:   p.Y,
 		Weight: weight,
 	}
@@ -156,8 +196,20 @@ func (n *Node) Update(val, weight float64) {
 	n.Weight = weight
 }
 
+func (n *Node) zeros(x float64) []float64 {
+	if len(n.LeftZeros) == 0 {
+		return n.RightZeros
+	} else if len(n.RightZeros) == 0 {
+		return n.LeftZeros
+	} else if x <= n.Xmain {
+		return n.LeftZeros
+	}
+	return n.RightZeros
+}
+
 // Deriv returns the derivative of the shape function at x.
 func (n *Node) Deriv(x float64) float64 {
+	zeros := n.zeros(x)
 	u := n.Val
 	dudx := 0.0
 	for _, x0 := range n.Xzero {
@@ -169,8 +221,9 @@ func (n *Node) Deriv(x float64) float64 {
 
 // Sample returns the value of the shape function at x.
 func (n *Node) Sample(x float64) float64 {
+	zeros := n.zeros(x)
 	u := n.Val
-	for _, x0 := range n.Xzero {
+	for _, x0 := range zeros {
 		u *= (x - x0) / (n.Xmain - x0)
 	}
 	return u
@@ -200,28 +253,23 @@ type Element struct {
 
 func (e *Element) Left() float64 {return e.NodePos[0]}
 func (e *Element) Right() float64 {return e.NodePos[len(e.NodePos)-1]}
+func (e *Element) LeftNode() float64 {return e.Nodes[0]}
+func (e *Element) RightNode() float64 {return e.Nodes[len(e.NodePos)-1]}
 
-func NewElementNodes(nodes []*Node) *Element {
-	nodePos := make([]float64, len(nodes))
-	for i := range nodes {
-		nodePos[i] = nodes[i].Xmain
-	}
-	return &Element{
-		Nodes: nodes,
-		NodePos: nodePos,
-	}
-}
-
-func NewElement(pts []Point, weights []float64) *Element {
+func NewElement(pts []Point, weights []float64, left, right *Element) *Element {
 	e := &Element{}
 	for _, p := range pts {
 		e.NodePos = append(e.NodePos, p.X)
 	}
 
 	for i, p := range pts {
-		xZeros := append([]float64{}, e.NodePos[:i]...)
-		xZeros = append(xZeros, e.NodePos[i+1:]...)
-		e.Nodes = append(e.Nodes, NewNode(p, xZeros, weights[i]))
+		leftzeros := append([]float64{}, e.NodePos[:i]...)
+		leftzeros = append(leftzeros, e.NodePos[i+1:]...)
+		var rightzeros []float64
+		if left != nil && i == 0 {
+			rightzeros = left.LeftNode().
+		}
+		e.Nodes = append(e.Nodes, NewNode(p, zeros, nil, weights[i]))
 	}
 	return e
 }
