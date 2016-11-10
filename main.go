@@ -29,6 +29,24 @@ func main() {
 			fmt.Printf("    node %p at x=%v\n", n, n.X())
 		}
 	}
+	
+	k := &SpringKernel{X: xs, K: []float64{7, 8, 9, 11, 13, 19}}
+	stiffness := mesh.StiffnessMatrix(k)
+	fmt.Printf("%v\n", mat64.Formatted(stiffness))
+}
+
+type SpringKernel struct {
+	X []float64
+	K []float64
+}
+
+func (k *SpringKernel) Kernel(p *KernelParams) float64 {
+	for i := 1; i < len(k.X); i++ {
+		if k.X[i-1] <= p.X && p.X <= k.X[i] {
+			return p.W * p.U * k.K[i-1]
+		}
+	}
+	return 1e100
 }
 
 type KernelParams struct {
@@ -66,20 +84,6 @@ type Mesh struct {
 	Left, Right Boundary
 }
 
-// aka essential boundary condition matrix
-func (m *Mesh) essentialBC() *mat64.Dense {
-	panic("unimplemented")
-}
-
-func (m *Mesh) Interpolate(x float64) float64 {
-	for _, e := range m.Elems {
-		if e.Left() <= x && x <= e.Right() {
-			return e.Interpolate(x)
-		}
-	}
-	panic("cannot interpolate out of bounds on mesh")
-}
-
 // NewMeshSimple creates a simply-connected mesh with nodes at the specified points and degree nodes per element.
 func NewMeshSimple(nodePos []float64, degree int, left, right Boundary) (*Mesh, error) {
 	m := &Mesh{NodeIndex: map[*Node]int{}, IndexNode: map[int][]*Node{}, Left: left, Right: right}
@@ -113,6 +117,20 @@ func NewMeshSimple(nodePos []float64, degree int, left, right Boundary) (*Mesh, 
 	return m, nil
 }
 
+// aka essential boundary condition matrix
+func (m *Mesh) essentialBC() *mat64.Dense {
+	panic("unimplemented")
+}
+
+func (m *Mesh) Interpolate(x float64) float64 {
+	for _, e := range m.Elems {
+		if e.Left() <= x && x <= e.Right() {
+			return e.Interpolate(x)
+		}
+	}
+	panic("cannot interpolate out of bounds on mesh")
+}
+
 func (m *Mesh) StiffnessMatrix(k Kerneler)  *mat64.Dense {
 	size := len(m.IndexNode)
 	mat := mat64.NewDense(size, size, nil)
@@ -129,11 +147,21 @@ func (m *Mesh) StiffnessMatrix(k Kerneler)  *mat64.Dense {
 		}
 		for i := range e.Conn {
 			for j := i; j < len(e.Conn); j++ {
+				if !e.Conn[i][j] {
+					continue
+				}
 				from, to := e.Nodes[i], e.Nodes[j]
 				a, b := m.NodeIndex[from], m.NodeIndex[to]
-				k := quad.Fixed(fn, from.X(), to.X(), len(e.Nodes), quad.Legendre{}, 0)
-				mat.Set(a, b, mat.At(a, b) + k)
-				mat.Set(b, a, mat.At(b, a) + k)
+				kv := quad.Fixed(fn, from.X(), to.X(), len(e.Nodes), quad.Legendre{}, 0)
+				kv = k.Kernel( &KernelParams{
+					X:     x,
+					U:     e.Interpolate(x),
+					GradU: e.Deriv(x),
+					W:     e.InterpolateWeight(x),
+					GradW: e.DerivWeight(x),
+				})
+				mat.Set(a, b, mat.At(a, b) + kv)
+				mat.Set(b, a, mat.At(b, a) + kv)
 			}
 		}
 	}
