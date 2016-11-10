@@ -30,7 +30,16 @@ func main() {
 		}
 	}
 	
-	k := &SpringKernel{X: xs, K: []float64{7, 8, 9, 11, 13, 19}}
+	PrintStiffness(xs, []float64{7, 8, 9, 11, 13, 19}, 3)
+	PrintStiffness([]float64{0, 1, 2}, []float64{7, 8}, 2)
+}
+
+func PrintStiffness(xs, ks []float64, degree int) {
+	k := &SpringKernel{X: xs, K: ks}
+	mesh, err := NewMeshSimple(xs, degree, Boundary{}, Boundary{})
+	if err != nil {
+		log.Fatal(err)
+	}
 	stiffness := mesh.StiffnessMatrix(k)
 	fmt.Printf("%v\n", mat64.Formatted(stiffness))
 }
@@ -43,7 +52,7 @@ type SpringKernel struct {
 func (k *SpringKernel) Kernel(p *KernelParams) float64 {
 	for i := 1; i < len(k.X); i++ {
 		if k.X[i-1] <= p.X && p.X <= k.X[i] {
-			return p.W * p.U * k.K[i-1]
+			return p.GradW * p.GradU * k.K[i-1]
 		}
 	}
 	return 1e100
@@ -151,7 +160,9 @@ func (m *Mesh) StiffnessMatrix(k Kerneler)  *mat64.Dense {
 				}
 				kv := quad.Fixed(fn, e.Left(), e.Right(), len(e.Nodes), quad.Legendre{}, 0)
 				mat.Set(a, b, mat.At(a, b) + kv)
-				mat.Set(b, a, mat.At(b, a) + kv)
+				if a != b {
+					mat.Set(b, a, mat.At(b, a) + kv)
+				}
 			}
 		}
 	}
