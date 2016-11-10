@@ -135,31 +135,21 @@ func (m *Mesh) StiffnessMatrix(k Kerneler)  *mat64.Dense {
 	size := len(m.IndexNode)
 	mat := mat64.NewDense(size, size, nil)
 	for _, e := range m.Elems {
-		fn := func(x float64) float64 {
-			pars := &KernelParams{
-				X:     x,
-				U:     e.Interpolate(x),
-				GradU: e.Deriv(x),
-				W:     e.InterpolateWeight(x),
-				GradW: e.DerivWeight(x),
-			}
-			return k.Kernel(pars)
-		}
-		for i := range e.Conn {
-			for j := i; j < len(e.Conn); j++ {
-				if !e.Conn[i][j] {
-					continue
+		for i := range e.Nodes {
+			for j := i; j < len(e.Nodes); j++ {
+				w, u := e.Nodes[i], e.Nodes[j]
+				a, b := m.NodeIndex[w], m.NodeIndex[u]
+				fn := func(x float64) float64 {
+					pars := &KernelParams{
+						X:     x,
+						U:     u.Sample(x),
+						GradU: u.Deriv(x),
+						W:     w.SampleWeight(x),
+						GradW: w.DerivWeight(x),
+					}
+					return k.Kernel(pars)
 				}
-				from, to := e.Nodes[i], e.Nodes[j]
-				a, b := m.NodeIndex[from], m.NodeIndex[to]
-				kv := quad.Fixed(fn, from.X(), to.X(), len(e.Nodes), quad.Legendre{}, 0)
-				kv = k.Kernel( &KernelParams{
-					X:     x,
-					U:     e.Interpolate(x),
-					GradU: e.Deriv(x),
-					W:     e.InterpolateWeight(x),
-					GradW: e.DerivWeight(x),
-				})
+				kv := quad.Fixed(fn, e.Left(), e.Right(), len(e.Nodes), quad.Legendre{}, 0)
 				mat.Set(a, b, mat.At(a, b) + kv)
 				mat.Set(b, a, mat.At(b, a) + kv)
 			}
@@ -276,17 +266,6 @@ func (e *Element) Interpolate(x float64) float64 {
 	return u
 }
 
-func (e *Element) InterpolateWeight(x float64) float64 {
-	if x < e.Left() || x > e.Right() {
-		return 0
-	}
-	u := 0.0
-	for _, n := range e.Nodes {
-		u += n.SampleWeight(x)
-	}
-	return u
-}
-
 func (e *Element) Deriv(x float64) float64 {
 	if x < e.Left() || x > e.Right() {
 		return 0
@@ -294,17 +273,6 @@ func (e *Element) Deriv(x float64) float64 {
 	u := 0.0
 	for _, n := range e.Nodes {
 		u += n.Deriv(x)
-	}
-	return u
-}
-
-func (e *Element) DerivWeight(x float64) float64 {
-	if x < e.Left() || x > e.Right() {
-		return 0
-	}
-	u := 0.0
-	for _, n := range e.Nodes {
-		u += n.DerivWeight(x)
 	}
 	return u
 }
