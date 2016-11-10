@@ -13,12 +13,12 @@ func main() {
 	xs := []float64{0, 1, 2, 3}
 
 	//n := 100
-	//elem := NewElement(xs)
+	//elem := NewElementSimple(xs)
 	//elem.PrintShapeFuncs(os.Stdout, n)
 	//elem.PrintFunc(os.Stdout, n)
 
 	xs = []float64{0, 1, 2, 3, 4, 5, 6}
-	mesh, err := NewMesh(xs, 3, Boundary{}, Boundary{})
+	mesh, err := NewMeshSimple(xs, 3, Boundary{}, Boundary{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -26,13 +26,6 @@ func main() {
 	for i, elem := range mesh.Elems {
 		fmt.Printf("elem %v\n", i)
 		for _, n := range elem.Nodes {
-			fmt.Printf("    node %p at x=%v\n", n, n.X())
-		}
-	}
-
-	fmt.Println("NodeList:")
-	for _, nds := range mesh.Nodes {
-		for _, n := range nds {
 			fmt.Printf("    node %p at x=%v\n", n, n.X())
 		}
 	}
@@ -66,7 +59,10 @@ type Boundary struct {
 
 type Mesh struct {
 	Elems       []*Element
-	Nodes       map[float64][]*Node
+	// NodeIndex maps all nodes to a global index/ID
+	NodeIndex  map[*Node]int
+	// IndexNode maps all global node indices to a list of nodes at the corresponding position
+	IndexNode map[int][]*Node
 	Left, Right Boundary
 }
 
@@ -84,12 +80,15 @@ func (m *Mesh) Interpolate(x float64) float64 {
 	panic("cannot interpolate out of bounds on mesh")
 }
 
-// NewMesh creates a simply-connected mesh with nodes at the specified points and degree nodes per element.
-func NewMesh(nodePos []float64, degree int, left, right Boundary) (*Mesh, error) {
-	m := &Mesh{Nodes: map[float64][]*Node{}, Left: left, Right: right}
+// NewMeshSimple creates a simply-connected mesh with nodes at the specified points and degree nodes per element.
+func NewMeshSimple(nodePos []float64, degree int, left, right Boundary) (*Mesh, error) {
+	m := &Mesh{NodeIndex: map[*Node]int{}, IndexNode: map[int][]*Node{}, Left: left, Right: right}
 	if (len(nodePos)-1)%(degree-1) != 0 {
 		return nil, fmt.Errorf("incompatible mesh degree (%v) and node count (%v)", degree, len(nodePos))
 	}
+	
+	nextId := 0
+	ids := map[float64]int{}
 
 	nElems := (len(nodePos) - 1) / (degree - 1)
 	for i := 0; i < nElems; i++ {
@@ -97,33 +96,48 @@ func NewMesh(nodePos []float64, degree int, left, right Boundary) (*Mesh, error)
 		for j := 0; j < degree; j++ {
 			xs[j] = nodePos[i*(degree-1)+j]
 		}
-		elem := NewElement(xs)
+		elem := NewElementSimple(xs)
 		m.Elems = append(m.Elems, elem)
 		for _, n := range elem.Nodes {
-			m.Nodes[n.X()] = append(m.Nodes[n.X()], n)
+			if id, ok := ids[n.X()]; ok {
+				m.NodeIndex[n] = id
+				m.IndexNode[id] = append(m.IndexNode[id], n)
+				continue
+			}
+			m.NodeIndex[n] = nextId
+			m.IndexNode[nextId] = append(m.IndexNode[nextId], n)
+			ids[n.X()] = nextId
+			nextId++
 		}
 	}
 	return m, nil
 }
 
-func (m *Mesh) StiffnessMatrix(k Kerneler) (A, b mat64.Dense) {
+func (m *Mesh) StiffnessMatrix(k Kerneler)  *mat64.Dense {
+	size := len(m.IndexNode)
+	mat := mat64.NewDense(size, size, nil)
 	for _, e := range m.Elems {
-		for _, n := range e.Nodes {
-			fn := func(x float64) float64 {
-				pars := &KernelParams{
-					X:     x,
-					U:     n.Sample(x),
-					GradU: n.Deriv(x),
-					W:     n.SampleWeight(x),
-					GradW: n.DerivWeight(x),
-				}
-				return k.Kernel(pars)
+		fn := func(x float64) float64 {
+			pars := &KernelParams{
+				X:     x,
+				U:     e.Interpolate(x),
+				GradU: e.Deriv(x),
+				W:     e.InterpolateWeight(x),
+				GradW: e.DerivWeight(x),
 			}
-			k := quad.Fixed(fn, e.Left(), e.Right(), len(e.Nodes), quad.Legendre{}, 0)
-			_ = k
+			return k.Kernel(pars)
+		}
+		for i := range e.Conn {
+			for j := i; j < len(e.Conn); j++ {
+				from, to := e.Nodes[i], e.Nodes[j]
+				a, b := m.NodeIndex[from], m.NodeIndex[to]
+				k := quad.Fixed(fn, from.X(), to.X(), len(e.Nodes), quad.Legendre{}, 0)
+				mat.Set(a, b, mat.At(a, b) + k)
+				mat.Set(b, a, mat.At(b, a) + k)
+			}
 		}
 	}
-	panic("unimplemented")
+	return mat
 }
 
 // Node represents a finite element node.  It holds a polynomial shape
@@ -201,17 +215,24 @@ func (n *Node) DerivWeight(x float64) float64 {
 // queried to provide said solution at various points within the element.
 type Element struct {
 	Nodes   []*Node
-	NodePos []float64
+	// Connectivity matrix for Nodes - true if two node i (index into Nodes slice) is connected to node j.
+	Conn [][]bool
 }
 
-func (e *Element) Left() float64  { return e.NodePos[0] }
-func (e *Element) Right() float64 { return e.NodePos[len(e.NodePos)-1] }
+func (e *Element) Left() float64  { return e.Nodes[0].X() }
+func (e *Element) Right() float64 { return e.Nodes[len(e.Nodes)-1].X() }
 
-func NewElement(xs []float64) *Element {
-	e := &Element{NodePos: append([]float64{}, xs...)}
+func NewElementSimple(xs []float64) *Element {
+	e := &Element{Conn: make([][]bool, len(xs))}
 	for i := range xs {
+		e.Conn[i] = make([]bool, len(xs))
 		n := NewNode(i, xs)
 		e.Nodes = append(e.Nodes, n)
+		e.Conn[i][i] = true
+		if i > 0 {
+			e.Conn[i-1][i] = true
+			e.Conn[i][i-1] = true
+		}
 	}
 	return e
 }
@@ -227,6 +248,17 @@ func (e *Element) Interpolate(x float64) float64 {
 	return u
 }
 
+func (e *Element) InterpolateWeight(x float64) float64 {
+	if x < e.Left() || x > e.Right() {
+		return 0
+	}
+	u := 0.0
+	for _, n := range e.Nodes {
+		u += n.SampleWeight(x)
+	}
+	return u
+}
+
 func (e *Element) Deriv(x float64) float64 {
 	if x < e.Left() || x > e.Right() {
 		return 0
@@ -234,6 +266,17 @@ func (e *Element) Deriv(x float64) float64 {
 	u := 0.0
 	for _, n := range e.Nodes {
 		u += n.Deriv(x)
+	}
+	return u
+}
+
+func (e *Element) DerivWeight(x float64) float64 {
+	if x < e.Left() || x > e.Right() {
+		return 0
+	}
+	u := 0.0
+	for _, n := range e.Nodes {
+		u += n.DerivWeight(x)
 	}
 	return u
 }
