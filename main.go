@@ -61,6 +61,28 @@ func (k *SpringKernel) VolInt(p *KernelParams) float64       { return 0 }
 func (k *SpringKernel) BoundaryIntU(p *KernelParams) float64 { return 0 }
 func (k *SpringKernel) BoundaryInt(p *KernelParams) float64  { return 0 }
 
+type HeatConduction struct {
+	// X is the node/mesh points.
+	X []float64
+	// K is thermal conductivity between node points.  len(K) == len(X)-1.
+	// K[i] is the thermal conductivity between X[i] and X[i+1].
+	K []float64
+	// Area is the cross section area of the conduction medium
+	Area float64
+}
+
+func (k *HeatConduction) VolIntU(p *KernelParams) float64 {
+	for i := 0; i < len(k.X)-1; i++ {
+		if k.X[i] <= p.X && p.X <= k.X[i+1] {
+			return p.GradW * p.GradU * k.K[i]
+		}
+	}
+	return 1e100 // insulating boundary
+}
+func (k *HeatConduction) VolInt(p *KernelParams) float64       { return 0 }
+func (k *HeatConduction) BoundaryIntU(p *KernelParams) float64 { return 0 }
+func (k *HeatConduction) BoundaryInt(p *KernelParams) float64  { return 0 }
+
 type KernelParams struct {
 	X float64
 	// U is value of the solution shape function if solving a linear system
@@ -290,6 +312,8 @@ func NewElementSimple(xs []float64) *Element {
 	return e
 }
 
+// Interpolate returns the value of the element at x - i.e. the superposition
+// of samples from each of the element nodes.
 func (e *Element) Interpolate(x float64) float64 {
 	if x < e.Left() || x > e.Right() {
 		return 0
@@ -301,6 +325,8 @@ func (e *Element) Interpolate(x float64) float64 {
 	return u
 }
 
+// Deriv returns the derivative of the element at x - i.e. the superposition
+// of derivatives from each of the element nodes.
 func (e *Element) Deriv(x float64) float64 {
 	if x < e.Left() || x > e.Right() {
 		return 0
@@ -312,6 +338,12 @@ func (e *Element) Deriv(x float64) float64 {
 	return u
 }
 
+// PrintFunc prints the element value and derivative in tab-separated form
+// with nsamples evenly spaced over the element's domain (one sample per line)
+// in the form:
+//
+//    [x]	[value]	[derivative]
+//    ...
 func (e *Element) PrintFunc(w io.Writer, nsamples int) {
 	xrange := e.Right() - e.Left()
 	for i := -1 * nsamples / 10; i < nsamples+2*nsamples/10; i++ {
@@ -320,11 +352,12 @@ func (e *Element) PrintFunc(w io.Writer, nsamples int) {
 	}
 }
 
-// PrintShapeFuncs prints the shape functions and their derivatives in tab-separated form
-// with nsamples evenly spaced over the element's domain (one sample per line) in the form:
+// PrintShapeFuncs prints the shape functions and their derivatives in
+// tab-separated form with nsamples evenly spaced over the element's domain
+// (one sample per line) in the form:
 //
-//    [x]	[Node1-shape(x)]	[Node1-shapederiv(x)]	[Node2-shape(x)]	...
-//
+//    [x]	[Node1-shape(x)]	[Node1-shapederiv(x)]	[Node2-shape(x)]
+//    ...
 func (e *Element) PrintShapeFuncs(w io.Writer, nsamples int) {
 	xrange := e.Right() - e.Left()
 	for i := -1 * nsamples / 10; i < nsamples+2*nsamples/10; i++ {
