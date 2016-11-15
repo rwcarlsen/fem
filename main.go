@@ -18,7 +18,7 @@ func main() {
 	//elem.PrintFunc(os.Stdout, n)
 
 	xs = []float64{0, 1, 2, 3, 4, 5, 6}
-	mesh, err := NewMeshSimple(xs, 3, Boundary{}, Boundary{})
+	mesh, err := NewMeshSimple(xs, 3)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func main() {
 
 func PrintStiffness(xs, ks []float64, degree int) {
 	k := &SpringKernel{X: xs, K: ks}
-	mesh, err := NewMeshSimple(xs, degree, Boundary{}, Boundary{})
+	mesh, err := NewMeshSimple(xs, degree)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -63,10 +63,12 @@ func (k *SpringKernel) BoundaryInt(p *KernelParams) float64  { return 0 }
 
 type KernelParams struct {
 	X float64
-	// U is value of the solution shape function if solving a linear system and
-	// it is the current guess for the solution (i.e. shape function val times current solution guess).
-	// For linear systems, an explicit solve will actually determine the nodal U values directly.
-	// For nonlinear systems, an Newton or similar will be used to iterate toward better U guesses.
+	// U is value of the solution shape function if solving a linear system
+	// and it is the current guess for the solution (i.e. shape function val
+	// times current solution guess).  For linear systems, an explicit solve
+	// will actually determine the nodal U values directly.  For nonlinear
+	// systems, an Newton or similar will be used to iterate toward better U
+	// guesses.
 	U     float64
 	GradU float64
 	// W holds the value of the weight/test function
@@ -88,38 +90,47 @@ type Kerneler interface {
 	BoundaryInt(p *KernelParams) float64
 }
 
-type NodeId int
-
-type BoundaryType int
-
-const (
-	Essential BoundaryType = iota
-	Dirichlet
-)
-
-type Boundary struct {
-	Val  float64
-	Type BoundaryType
-}
-
 type Mesh struct {
 	Elems []*Element
 	// NodeIndex maps all nodes to a global index/ID
 	NodeIndex map[*Node]int
 	// IndexNode maps all global node indices to a list of nodes at the corresponding position
-	IndexNode   map[int][]*Node
-	Left, Right Boundary
+	IndexNode map[int][]*Node
+}
+
+func (m *Mesh) Finalize() {
+	nextId := 0
+	ids := map[float64]int{}
+	for _, e := range m.Elems {
+		for _, n := range e.Nodes {
+			if id, ok := ids[n.X()]; ok {
+				m.NodeIndex[n] = id
+				m.IndexNode[id] = append(m.IndexNode[id], n)
+				continue
+			}
+
+			m.NodeIndex[n] = nextId
+			m.IndexNode[nextId] = append(m.IndexNode[nextId], n)
+			ids[n.X()] = nextId
+			nextId++
+		}
+	}
+}
+
+func (m *Mesh) AddElement(e *Element) error {
+	if len(m.NodeIndex) > 0 {
+		return fmt.Errorf("cannot add elements to a finalized mesh")
+	}
+	m.Elems = append(m.Elems, e)
+	return nil
 }
 
 // NewMeshSimple creates a simply-connected mesh with nodes at the specified points and degree nodes per element.
-func NewMeshSimple(nodePos []float64, degree int, left, right Boundary) (*Mesh, error) {
-	m := &Mesh{NodeIndex: map[*Node]int{}, IndexNode: map[int][]*Node{}, Left: left, Right: right}
+func NewMeshSimple(nodePos []float64, degree int) (*Mesh, error) {
+	m := &Mesh{NodeIndex: map[*Node]int{}, IndexNode: map[int][]*Node{}}
 	if (len(nodePos)-1)%(degree-1) != 0 {
 		return nil, fmt.Errorf("incompatible mesh degree (%v) and node count (%v)", degree, len(nodePos))
 	}
-
-	nextId := 0
-	ids := map[float64]int{}
 
 	nElems := (len(nodePos) - 1) / (degree - 1)
 	for i := 0; i < nElems; i++ {
@@ -127,20 +138,9 @@ func NewMeshSimple(nodePos []float64, degree int, left, right Boundary) (*Mesh, 
 		for j := 0; j < degree; j++ {
 			xs[j] = nodePos[i*(degree-1)+j]
 		}
-		elem := NewElementSimple(xs)
-		m.Elems = append(m.Elems, elem)
-		for _, n := range elem.Nodes {
-			if id, ok := ids[n.X()]; ok {
-				m.NodeIndex[n] = id
-				m.IndexNode[id] = append(m.IndexNode[id], n)
-				continue
-			}
-			m.NodeIndex[n] = nextId
-			m.IndexNode[nextId] = append(m.IndexNode[nextId], n)
-			ids[n.X()] = nextId
-			nextId++
-		}
+		m.AddElement(NewElementSimple(xs))
 	}
+	m.Finalize()
 	return m, nil
 }
 
