@@ -98,7 +98,13 @@ type Mesh struct {
 	IndexNode map[int][]*Node
 }
 
+// Finalize generates node ID's and indices for mapping nodes to matrix
+// indices.  It should be called after all elements have been added to the
+// mesh.
 func (m *Mesh) Finalize() {
+	if len(m.NodeIndex) > 0 {
+		return
+	}
 	nextId := 0
 	ids := map[float64]int{}
 	for _, e := range m.Elems {
@@ -117,6 +123,8 @@ func (m *Mesh) Finalize() {
 	}
 }
 
+// AddElement is for adding custom-built elements to a mesh.  When all
+// elements have been added.  New elements
 func (m *Mesh) AddElement(e *Element) error {
 	if len(m.NodeIndex) > 0 {
 		return fmt.Errorf("cannot add elements to a finalized mesh")
@@ -125,7 +133,8 @@ func (m *Mesh) AddElement(e *Element) error {
 	return nil
 }
 
-// NewMeshSimple creates a simply-connected mesh with nodes at the specified points and degree nodes per element.
+// NewMeshSimple creates a simply-connected mesh with nodes at the specified
+// points and degree nodes per element. The returned mesh has been finalized.
 func NewMeshSimple(nodePos []float64, degree int) (*Mesh, error) {
 	m := &Mesh{NodeIndex: map[*Node]int{}, IndexNode: map[int][]*Node{}}
 	if (len(nodePos)-1)%(degree-1) != 0 {
@@ -144,11 +153,6 @@ func NewMeshSimple(nodePos []float64, degree int) (*Mesh, error) {
 	return m, nil
 }
 
-// aka essential boundary condition matrix
-func (m *Mesh) essentialBC() *mat64.Dense {
-	panic("unimplemented")
-}
-
 func (m *Mesh) Interpolate(x float64) float64 {
 	for _, e := range m.Elems {
 		if e.Left() <= x && x <= e.Right() {
@@ -158,7 +162,12 @@ func (m *Mesh) Interpolate(x float64) float64 {
 	panic("cannot interpolate out of bounds on mesh")
 }
 
+func (m *Mesh) ForceMatrix() *mat64.Dense {
+	panic("unimplemented")
+}
+
 func (m *Mesh) StiffnessMatrix(k Kerneler) *mat64.Dense {
+	m.Finalize()
 	size := len(m.IndexNode)
 	mat := mat64.NewDense(size, size, nil)
 	for _, e := range m.Elems {
@@ -196,7 +205,8 @@ func (m *Mesh) StiffnessMatrix(k Kerneler) *mat64.Dense {
 //    (x1 - x2)   (x1 - x3)   (x1 - x4)
 //
 type Node struct {
-	// Index is the x-value where the node is equal to Val
+	// Index identifies the interpolation point in Xvals where the node's
+	// shape function is equal to Val
 	Index  int
 	Xvals  []float64
 	Val    float64
@@ -212,6 +222,8 @@ func NewNode(xIndex int, xs []float64) *Node {
 	}
 }
 
+// X returns the x interpolation point where the node's shape function is
+// non-zero.
 func (n *Node) X() float64 { return n.Xvals[n.Index] }
 
 // Sample returns the value of the shape function at x.
@@ -262,24 +274,18 @@ func (n *Node) DerivWeight(x float64) float64 {
 // queried to provide said solution at various points within the element.
 type Element struct {
 	Nodes []*Node
-	// Connectivity matrix for Nodes - true if two node i (index into Nodes slice) is connected to node j.
-	Conn [][]bool
 }
 
 func (e *Element) Left() float64  { return e.Nodes[0].X() }
 func (e *Element) Right() float64 { return e.Nodes[len(e.Nodes)-1].X() }
 
+// NewElementSimple generates a lagrange polynomial interpolating element of
+// degree len(xs)-1 using the values in xs as the interpolation points/nodes.
 func NewElementSimple(xs []float64) *Element {
-	e := &Element{Conn: make([][]bool, len(xs))}
+	e := &Element{}
 	for i := range xs {
-		e.Conn[i] = make([]bool, len(xs))
 		n := NewNode(i, xs)
 		e.Nodes = append(e.Nodes, n)
-		e.Conn[i][i] = true
-		if i > 0 {
-			e.Conn[i-1][i] = true
-			e.Conn[i][i-1] = true
-		}
 	}
 	return e
 }
