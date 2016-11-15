@@ -29,7 +29,7 @@ func main() {
 			fmt.Printf("    node %p at x=%v\n", n, n.X())
 		}
 	}
-	
+
 	PrintStiffness(xs, []float64{7, 8, 9, 11, 13, 19}, 3)
 	PrintStiffness([]float64{0, 1, 2}, []float64{7, 8}, 2)
 }
@@ -49,7 +49,7 @@ type SpringKernel struct {
 	K []float64
 }
 
-func (k *SpringKernel) Kernel(p *KernelParams) float64 {
+func (k *SpringKernel) VolIntU(p *KernelParams) float64 {
 	for i := 1; i < len(k.X); i++ {
 		if k.X[i-1] <= p.X && p.X <= k.X[i] {
 			return p.GradW * p.GradU * k.K[i-1]
@@ -57,17 +57,35 @@ func (k *SpringKernel) Kernel(p *KernelParams) float64 {
 	}
 	return 1e100
 }
+func (k *SpringKernel) VolInt(p *KernelParams) float64       { return 0 }
+func (k *SpringKernel) BoundaryIntU(p *KernelParams) float64 { return 0 }
+func (k *SpringKernel) BoundaryInt(p *KernelParams) float64  { return 0 }
 
 type KernelParams struct {
-	X     float64
+	X float64
+	// U is value of the solution shape function if solving a linear system and
+	// it is the current guess for the solution (i.e. shape function val times current solution guess).
+	// For linear systems, an explicit solve will actually determine the nodal U values directly.
+	// For nonlinear systems, an Newton or similar will be used to iterate toward better U guesses.
 	U     float64
 	GradU float64
-	W     float64
+	// W holds the value of the weight/test function
+	W float64
+	// GradW holds the derivative of the weight/test function
 	GradW float64
+	// Penalty represents a penalty factor for converting essential boundary
+	// conditions to natural/traction boundary conditions.
+	Penalty float64
 }
 
+// K
 type Kerneler interface {
-	Kernel(p *KernelParams) float64
+	// Kernel returns the value of the volumetric integration portion of the weak form
+	// (i.e. everything but the boundary/surface integration).
+	VolIntU(p *KernelParams) float64
+	VolInt(p *KernelParams) float64
+	BoundaryIntU(p *KernelParams) float64
+	BoundaryInt(p *KernelParams) float64
 }
 
 type NodeId int
@@ -85,11 +103,11 @@ type Boundary struct {
 }
 
 type Mesh struct {
-	Elems       []*Element
+	Elems []*Element
 	// NodeIndex maps all nodes to a global index/ID
-	NodeIndex  map[*Node]int
+	NodeIndex map[*Node]int
 	// IndexNode maps all global node indices to a list of nodes at the corresponding position
-	IndexNode map[int][]*Node
+	IndexNode   map[int][]*Node
 	Left, Right Boundary
 }
 
@@ -99,7 +117,7 @@ func NewMeshSimple(nodePos []float64, degree int, left, right Boundary) (*Mesh, 
 	if (len(nodePos)-1)%(degree-1) != 0 {
 		return nil, fmt.Errorf("incompatible mesh degree (%v) and node count (%v)", degree, len(nodePos))
 	}
-	
+
 	nextId := 0
 	ids := map[float64]int{}
 
@@ -140,7 +158,7 @@ func (m *Mesh) Interpolate(x float64) float64 {
 	panic("cannot interpolate out of bounds on mesh")
 }
 
-func (m *Mesh) StiffnessMatrix(k Kerneler)  *mat64.Dense {
+func (m *Mesh) StiffnessMatrix(k Kerneler) *mat64.Dense {
 	size := len(m.IndexNode)
 	mat := mat64.NewDense(size, size, nil)
 	for _, e := range m.Elems {
@@ -149,19 +167,19 @@ func (m *Mesh) StiffnessMatrix(k Kerneler)  *mat64.Dense {
 				w, u := e.Nodes[i], e.Nodes[j]
 				a, b := m.NodeIndex[w], m.NodeIndex[u]
 				fn := func(x float64) float64 {
-					pars := &KernelParams{
-						X:     x,
-						U:     u.Sample(x),
-						GradU: u.Deriv(x),
-						W:     w.SampleWeight(x),
-						GradW: w.DerivWeight(x),
-					}
-					return k.Kernel(pars)
+					pars := &KernelParams{X: x, U: u.Sample(x), GradU: u.Deriv(x), W: w.SampleWeight(x), GradW: w.DerivWeight(x)}
+					return k.VolIntU(pars)
 				}
-				kv := quad.Fixed(fn, e.Left(), e.Right(), len(e.Nodes), quad.Legendre{}, 0)
-				mat.Set(a, b, mat.At(a, b) + kv)
+				volU := quad.Fixed(fn, e.Left(), e.Right(), len(e.Nodes), quad.Legendre{}, 0)
+				x1 := e.Left()
+				x2 := e.Right()
+				pars1 := &KernelParams{X: x1, U: u.Sample(x1), GradU: u.Deriv(x1), W: w.SampleWeight(x1), GradW: w.DerivWeight(x1)}
+				pars2 := &KernelParams{X: x2, U: u.Sample(x2), GradU: u.Deriv(x2), W: w.SampleWeight(x2), GradW: w.DerivWeight(x2)}
+				boundU1 := k.BoundaryIntU(pars1)
+				boundU2 := k.BoundaryIntU(pars2)
+				mat.Set(a, b, mat.At(a, b)+volU+boundU1-boundU2)
 				if a != b {
-					mat.Set(b, a, mat.At(b, a) + kv)
+					mat.Set(b, a, mat.At(a, b))
 				}
 			}
 		}
@@ -243,7 +261,7 @@ func (n *Node) DerivWeight(x float64) float64 {
 // element is calibrated to a particular (approximate) solution and can be
 // queried to provide said solution at various points within the element.
 type Element struct {
-	Nodes   []*Node
+	Nodes []*Node
 	// Connectivity matrix for Nodes - true if two node i (index into Nodes slice) is connected to node j.
 	Conn [][]bool
 }
