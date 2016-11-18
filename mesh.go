@@ -80,6 +80,26 @@ func (m *Mesh) Interpolate(x float64) float64 {
 	panic("cannot interpolate out of bounds on mesh")
 }
 
+func (m *Mesh) Solve(k Kernel) error {
+	A := m.StiffnessMatrix(k)
+	b := m.ForceMatrix(k)
+	var x mat64.Dense
+	err := x.Solve(A, b)
+	if err != nil {
+		return err
+	}
+
+	r, _ := x.Dims()
+
+	for i := 0; i < r; i++ {
+		nodes := m.IndexNode[i]
+		for _, n := range nodes {
+			n.Val = x.At(i, 0)
+		}
+	}
+	return nil
+}
+
 func (m *Mesh) ForceMatrix(k Kernel) *mat64.Dense {
 	m.Finalize()
 	size := len(m.IndexNode)
@@ -92,17 +112,18 @@ func (m *Mesh) ForceMatrix(k Kernel) *mat64.Dense {
 				pars := &KernelParams{X: x, U: 0, GradU: 0, W: w.SampleWeight(x), GradW: w.DerivWeight(x), Penalty: DefaultPenalty}
 				return k.VolInt(pars)
 			}
-			volU := quad.Fixed(fn, e.Left(), e.Right(), len(e.Nodes), quad.Legendre{}, 0)
+			vol := quad.Fixed(fn, e.Left(), e.Right(), len(e.Nodes), quad.Legendre{}, 0)
 
 			x1 := e.Left()
 			x2 := e.Right()
 			pars1 := &KernelParams{X: x1, U: 0, GradU: 0, W: w.SampleWeight(x1), GradW: w.DerivWeight(x1), Penalty: DefaultPenalty}
 			pars2 := &KernelParams{X: x2, U: 0, GradU: 0, W: w.SampleWeight(x2), GradW: w.DerivWeight(x2), Penalty: DefaultPenalty}
-			boundU1 := k.BoundaryInt(pars1)
-			boundU2 := k.BoundaryInt(pars2)
+			bound1 := k.BoundaryInt(pars1)
+			bound2 := k.BoundaryInt(pars2)
+			fmt.Printf("x=%v, vol=%v, bound1=%v, bound2=%v\n", w.X(), vol, bound1, bound2)
 
 			a := m.NodeIndex[w]
-			mat.Set(a, 0, mat.At(a, 0)+volU+boundU1+boundU2)
+			mat.Set(a, 0, mat.At(a, 0)+vol+bound1+bound2)
 		}
 	}
 	return mat

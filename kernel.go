@@ -75,7 +75,7 @@ func (hc *HeatConduction) VolInt(p *KernelParams) float64 {
 	for i := 0; i < len(hc.X)-1; i++ {
 		if hc.X[i] <= p.X && p.X <= hc.X[i+1] {
 			fmt.Printf("X=%v, W=%v, S=%v\n", p.X, p.W, hc.S[i])
-			return p.W * hc.S[i] * hc.Area
+			return p.W * hc.S[i]
 		}
 	}
 	return 0
@@ -114,7 +114,7 @@ func (hc *HeatConduction) BoundaryInt(p *KernelParams) float64 {
 		if hc.Right.Type == Essential {
 			return p.W * hc.Area * p.Penalty
 		}
-		return p.W * hc.Area * hc.Right.Val
+		return -1 * p.W * hc.Area * hc.Right.Val
 	}
 }
 
