@@ -1,7 +1,5 @@
 package main
 
-import "fmt"
-
 type BoundaryType int
 
 const (
@@ -74,7 +72,6 @@ func (hc *HeatConduction) VolIntU(p *KernelParams) float64 {
 func (hc *HeatConduction) VolInt(p *KernelParams) float64 {
 	for i := 0; i < len(hc.X)-1; i++ {
 		if hc.X[i] <= p.X && p.X <= hc.X[i+1] {
-			fmt.Printf("X=%v, W=%v, S=%v\n", p.X, p.W, hc.S[i])
 			return p.W * hc.S[i]
 		}
 	}
@@ -82,7 +79,6 @@ func (hc *HeatConduction) VolInt(p *KernelParams) float64 {
 }
 
 func (hc *HeatConduction) BoundaryIntU(p *KernelParams) float64 {
-	fmt.Printf("x=%v, U=%v, W=%v\n", p.X, p.U, p.W)
 	if p.X != hc.X[0] && p.X != hc.X[len(hc.X)-1] {
 		return 0
 	}
@@ -107,14 +103,14 @@ func (hc *HeatConduction) BoundaryInt(p *KernelParams) float64 {
 
 	if p.X == hc.X[0] {
 		if hc.Left.Type == Essential {
-			return p.W * hc.Area * p.Penalty
+			return p.W * hc.Area * p.Penalty * hc.Left.Val
 		}
 		return p.W * hc.Area * hc.Left.Val
 	} else {
 		if hc.Right.Type == Essential {
-			return p.W * hc.Area * p.Penalty
+			return p.W * hc.Area * p.Penalty * hc.Right.Val
 		}
-		return -1 * p.W * hc.Area * hc.Right.Val
+		return p.W * hc.Area * hc.Right.Val
 	}
 }
 

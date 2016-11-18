@@ -120,7 +120,6 @@ func (m *Mesh) ForceMatrix(k Kernel) *mat64.Dense {
 			pars2 := &KernelParams{X: x2, U: 0, GradU: 0, W: w.SampleWeight(x2), GradW: w.DerivWeight(x2), Penalty: DefaultPenalty}
 			bound1 := k.BoundaryInt(pars1)
 			bound2 := k.BoundaryInt(pars2)
-			fmt.Printf("x=%v, vol=%v, bound1=%v, bound2=%v\n", w.X(), vol, bound1, bound2)
 
 			a := m.NodeIndex[w]
 			mat.Set(a, 0, mat.At(a, 0)+vol+bound1+bound2)
