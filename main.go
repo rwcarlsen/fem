@@ -37,8 +37,8 @@ func TestHeatKernel() {
 	degree := 2
 	hc := &HeatConduction{
 		X: []float64{0, 2, 4},
-		K: []float64{2, 2}, // W/(m*C)
-		S: []float64{5, 5}, // W/m
+		K: ConstVal(2), // W/(m*C)
+		S: ConstVal(5), // W/m
 		// Area is the cross section area of the conduction medium
 		Area:  0.1,            // m^2
 		Left:  EssentialBC(0), // deg C

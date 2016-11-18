@@ -46,15 +46,44 @@ type Kernel interface {
 	BoundaryInt(p *KernelParams) float64
 }
 
+type Valer interface {
+	Val(x float64) float64
+}
+
+type ConstVal float64
+
+func (p ConstVal) Val(x float64) float64 { return float64(p) }
+
+type LinVal struct {
+	X []float64
+	Y []float64
+}
+
+func (p *LinVal) Val(x float64) float64 {
+	for i := 0; i < len(p.X)-1; i++ {
+		x1, x2 := p.X[i], p.X[i+1]
+		y1, y2 := p.Y[i], p.Y[i+1]
+		if x1 <= x && x <= x2 {
+			return y2 + (x-x1)/(x2-x1)*(y2-y1)
+		}
+	}
+	if x < p.X[0] {
+		return p.Y[0]
+	} else {
+		return p.Y[len(p.Y)-1]
+	}
+}
+
 type HeatConduction struct {
 	// X is the node/mesh points.
 	X []float64
 	// K is thermal conductivity between node points.  len(K) == len(X)-1.
 	// K[i] is the thermal conductivity between X[i] and X[i+1].
-	K []float64
+	K Valer
+
 	// S is heat source between node points.  len(S) == len(X)-1.
 	// S[i] is the thermal conductivity between X[i] and X[i+1].
-	S []float64
+	S Valer
 	// Area is the cross section area of the conduction medium
 	Area  float64
 	Left  *Boundary
@@ -62,20 +91,10 @@ type HeatConduction struct {
 }
 
 func (hc *HeatConduction) VolIntU(p *KernelParams) float64 {
-	for i := 0; i < len(hc.X)-1; i++ {
-		if hc.X[i] <= p.X && p.X <= hc.X[i+1] {
-			return p.GradW * hc.K[i] * hc.Area * p.GradU
-		}
-	}
-	return 1e100 // insulating boundary
+	return p.GradW * hc.K.Val(p.X) * hc.Area * p.GradU
 }
 func (hc *HeatConduction) VolInt(p *KernelParams) float64 {
-	for i := 0; i < len(hc.X)-1; i++ {
-		if hc.X[i] <= p.X && p.X <= hc.X[i+1] {
-			return p.W * hc.S[i]
-		}
-	}
-	return 0
+	return p.W * hc.S.Val(p.X)
 }
 
 func (hc *HeatConduction) BoundaryIntU(p *KernelParams) float64 {
@@ -110,7 +129,7 @@ func (hc *HeatConduction) BoundaryInt(p *KernelParams) float64 {
 		if hc.Right.Type == Essential {
 			return p.W * hc.Area * p.Penalty * hc.Right.Val
 		}
-		return p.W * hc.Area * hc.Right.Val
+		return -1 * p.W * hc.Area * hc.Right.Val
 	}
 }
 
