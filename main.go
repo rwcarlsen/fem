@@ -3,18 +3,23 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/gonum/matrix/mat64"
 )
 
 func main() {
-	TestHeatKernel()
-	//xs := []float64{0, 1, 2, 3}
+	//TestHeatKernel()
+	xs := []float64{0, 1}
+	ys := []float64{1, 2}
 
-	////n := 100
-	////elem := NewElementSimple(xs)
-	////elem.PrintShapeFuncs(os.Stdout, n)
-	////elem.PrintFunc(os.Stdout, n)
+	n := 100
+	elem := NewElementSimple(xs)
+	for i, n := range elem.Nodes {
+		n.Val = ys[i]
+	}
+	//elem.PrintShapeFuncs(os.Stdout, n)
+	elem.PrintFunc(os.Stdout, n)
 
 	//xs = []float64{0, 1, 2, 3, 4, 5, 6}
 	//mesh, err := NewMeshSimple(xs, 3)

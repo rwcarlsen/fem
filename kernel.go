@@ -36,7 +36,6 @@ type KernelParams struct {
 	Penalty float64
 }
 
-// K
 type Kernel interface {
 	// Kernel returns the value of the volumetric integration portion of the weak form
 	// (i.e. everything but the boundary/surface integration).
@@ -54,12 +53,12 @@ type ConstVal float64
 
 func (p ConstVal) Val(x float64) float64 { return float64(p) }
 
-type LinVal struct {
+type LinVals struct {
 	X []float64
 	Y []float64
 }
 
-func (p *LinVal) Val(x float64) float64 {
+func (p *LinVals) Val(x float64) float64 {
 	for i := 0; i < len(p.X)-1; i++ {
 		x1, x2 := p.X[i], p.X[i+1]
 		y1, y2 := p.Y[i], p.Y[i+1]
@@ -69,9 +68,27 @@ func (p *LinVal) Val(x float64) float64 {
 	}
 	if x < p.X[0] {
 		return p.Y[0]
-	} else {
-		return p.Y[len(p.Y)-1]
 	}
+	return p.Y[len(p.Y)-1]
+}
+
+type SecVal struct {
+	X []float64
+	Y []float64
+}
+
+func (p *SecVal) Val(x float64) float64 {
+	for i := 0; i < len(p.X)-1; i++ {
+		x1, x2 := p.X[i], p.X[i+1]
+		y := p.Y[i]
+		if x1 <= x && x <= x2 {
+			return y
+		}
+	}
+	if x < p.X[0] {
+		return p.Y[0]
+	}
+	return p.Y[len(p.Y)-1]
 }
 
 type HeatConduction struct {
@@ -80,7 +97,6 @@ type HeatConduction struct {
 	// K is thermal conductivity between node points.  len(K) == len(X)-1.
 	// K[i] is the thermal conductivity between X[i] and X[i+1].
 	K Valer
-
 	// S is heat source between node points.  len(S) == len(X)-1.
 	// S[i] is the thermal conductivity between X[i] and X[i+1].
 	S Valer
