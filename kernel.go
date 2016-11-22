@@ -18,7 +18,7 @@ func DirichletBC(gradU float64) *Boundary { return &Boundary{Dirichlet, gradU} }
 const DefaultPenalty = 1e14
 
 type KernelParams struct {
-	X float64
+	X []float64
 	// U is value of the solution shape function if solving a linear system
 	// and it is the current guess for the solution (i.e. shape function val
 	// times current solution guess).  For linear systems, an explicit solve
@@ -46,51 +46,57 @@ type Kernel interface {
 }
 
 type Valer interface {
-	Val(x float64) float64
+	Val(x []float64) float64
 }
 
 type ConstVal float64
 
-func (p ConstVal) Val(x float64) float64 { return float64(p) }
+func (p ConstVal) Val(x []float64) float64 { return float64(p) }
 
+// LinVals only works for 1D problems
 type LinVals struct {
 	X []float64
 	Y []float64
 }
 
-func (p *LinVals) Val(x float64) float64 {
+func (p *LinVals) Val(x []float64) float64 {
+	xx := x[0]
 	for i := 0; i < len(p.X)-1; i++ {
 		x1, x2 := p.X[i], p.X[i+1]
 		y1, y2 := p.Y[i], p.Y[i+1]
-		if x1 <= x && x <= x2 {
-			return y2 + (x-x1)/(x2-x1)*(y2-y1)
+		if x1 <= xx && xx <= x2 {
+			return y2 + (xx-x1)/(x2-x1)*(y2-y1)
 		}
 	}
-	if x < p.X[0] {
+	if xx < p.X[0] {
 		return p.Y[0]
 	}
 	return p.Y[len(p.Y)-1]
 }
 
+// SecVal only works for 1D problems.
 type SecVal struct {
 	X []float64
 	Y []float64
 }
 
-func (p *SecVal) Val(x float64) float64 {
+func (p *SecVal) Val(x []float64) float64 {
+	xx := x[0]
 	for i := 0; i < len(p.X)-1; i++ {
 		x1, x2 := p.X[i], p.X[i+1]
 		y := p.Y[i]
-		if x1 <= x && x <= x2 {
+		if x1 <= xx && xx <= x2 {
 			return y
 		}
 	}
-	if x < p.X[0] {
+	if xx < p.X[0] {
 		return p.Y[0]
 	}
 	return p.Y[len(p.Y)-1]
 }
 
+// HeatConduction implements 1D heat conduction physics.
+// TODO: update the Boundary... methods to handle multi-dimensions
 type HeatConduction struct {
 	// X is the node/mesh points.
 	X []float64
@@ -114,11 +120,11 @@ func (hc *HeatConduction) VolInt(p *KernelParams) float64 {
 }
 
 func (hc *HeatConduction) BoundaryIntU(p *KernelParams) float64 {
-	if p.X != hc.X[0] && p.X != hc.X[len(hc.X)-1] {
+	if p.X[0] != hc.X[0] && p.X[0] != hc.X[len(hc.X)-1] {
 		return 0
 	}
 
-	if p.X == hc.X[0] {
+	if p.X[0] == hc.X[0] {
 		if hc.Left.Type == Dirichlet {
 			return 0
 		}
@@ -132,11 +138,11 @@ func (hc *HeatConduction) BoundaryIntU(p *KernelParams) float64 {
 }
 
 func (hc *HeatConduction) BoundaryInt(p *KernelParams) float64 {
-	if p.X != hc.X[0] && p.X != hc.X[len(hc.X)-1] {
+	if p.X[0] != hc.X[0] && p.X[0] != hc.X[len(hc.X)-1] {
 		return 0
 	}
 
-	if p.X == hc.X[0] {
+	if p.X[0] == hc.X[0] {
 		if hc.Left.Type == Essential {
 			return p.W * hc.Area * p.Penalty * hc.Left.Val
 		}
@@ -148,20 +154,3 @@ func (hc *HeatConduction) BoundaryInt(p *KernelParams) float64 {
 		return -1 * p.W * hc.Area * hc.Right.Val
 	}
 }
-
-type SpringKernel struct {
-	X []float64
-	K []float64
-}
-
-func (k *SpringKernel) VolIntU(p *KernelParams) float64 {
-	for i := 1; i < len(k.X); i++ {
-		if k.X[i-1] <= p.X && p.X <= k.X[i] {
-			return p.GradW * p.GradU * k.K[i-1]
-		}
-	}
-	return 1e100
-}
-func (k *SpringKernel) VolInt(p *KernelParams) float64       { return 0 }
-func (k *SpringKernel) BoundaryIntU(p *KernelParams) float64 { return 0 }
-func (k *SpringKernel) BoundaryInt(p *KernelParams) float64  { return 0 }

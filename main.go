@@ -9,19 +9,15 @@ import (
 
 func main() {
 	TestHeatKernel()
-	//xs := []float64{0, 1}
-	//ys := []float64{1, 2}
+	//xs := []float64{0, 1, 2, 3}
 
-	//n := 100
-	//elem := NewElementSimple(xs)
-	//for i, n := range elem.Nodes {
-	//	n.Val = ys[i]
-	//}
+	////n := 100
+	////elem := NewElementSimple1D(xs)
 	////elem.PrintShapeFuncs(os.Stdout, n)
-	//elem.PrintFunc(os.Stdout, n)
+	////elem.PrintFunc(os.Stdout, n)
 
 	//xs = []float64{0, 1, 2, 3, 4, 5, 6}
-	//mesh, err := NewMeshSimple(xs, 3)
+	//mesh, err := NewMeshSimple1D(xs, 3)
 	//if err != nil {
 	//	log.Fatal(err)
 	//}
@@ -39,10 +35,8 @@ func main() {
 
 func TestHeatKernel() {
 	degree := 3
-	//degree := 2
 	hc := &HeatConduction{
 		X: []float64{0, 1, 2, 3, 4},
-		//X: []float64{0, 2, 4},
 		K: ConstVal(2), // W/(m*C)
 		S: ConstVal(5), // W/m
 		// Area is the cross section area of the conduction medium
@@ -50,7 +44,7 @@ func TestHeatKernel() {
 		Left:  EssentialBC(0), // deg C
 		Right: DirichletBC(5), // W/m^2
 	}
-	mesh, err := NewMeshSimple(hc.X, degree)
+	mesh, err := NewMeshSimple1D(hc.X, degree)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -69,18 +63,8 @@ func TestHeatKernel() {
 	for i := 0; i < n+1; i++ {
 		x1 := hc.X[0]
 		x2 := hc.X[len(hc.X)-1]
-		x := float64(i)/float64(n)*(x2-x1) + x1
+		x := []float64{float64(i)/float64(n)*(x2-x1) + x1}
 		y := mesh.Interpolate(x)
 		fmt.Printf("%v\t%v\n", x, y)
 	}
-}
-
-func PrintStiffness(xs, ks []float64, degree int) {
-	k := &SpringKernel{X: xs, K: ks}
-	mesh, err := NewMeshSimple(xs, degree)
-	if err != nil {
-		log.Fatal(err)
-	}
-	stiffness := mesh.StiffnessMatrix(k)
-	fmt.Printf("%v\n", mat64.Formatted(stiffness))
 }

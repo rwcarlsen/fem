@@ -3,6 +3,8 @@ package main
 import (
 	"math"
 	"testing"
+
+	"github.com/gonum/matrix/mat64"
 )
 
 func TestNode(t *testing.T) {
@@ -31,8 +33,8 @@ func TestNode(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		n := NewNode(test.Index, test.Xs)
-		y := n.Sample(test.SampleX)
+		n := NewLagrangeNode(test.Index, test.Xs)
+		y := n.Sample([]float64{test.SampleX})
 		if y != test.Want {
 			t.Errorf("FAIL test %v (xs=%v, i=%v): f(%v)=%v, want %v", i+1, test.Xs, test.Index, test.SampleX, y, test.Want)
 		} else {
@@ -58,11 +60,11 @@ func TestElement(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		elem := NewElementSimple(test.Xs)
+		elem := NewElementSimple1D(test.Xs)
 		for i, n := range elem.Nodes {
-			n.Val = test.Ys[i]
+			n.Set(test.Ys[i], 1)
 		}
-		y := elem.Interpolate(test.SampleX)
+		y := elem.Interpolate([]float64{test.SampleX})
 		if y != test.Want {
 			t.Errorf("FAIL test %v (xs=%v, ys=%v): f(%v)=%v, want %v", i+1, test.Xs, test.Ys, test.SampleX, y, test.Want)
 		} else {
@@ -96,7 +98,7 @@ func TestMeshSolve(t *testing.T) {
 
 	for i, test := range tests {
 		t.Logf("test %v:", i+1)
-		mesh, err := NewMeshSimple(test.Xs, test.Degree)
+		mesh, err := NewMeshSimple1D(test.Xs, test.Degree)
 		if err != nil {
 			t.Errorf("    FAIL: %v", err)
 		}
@@ -109,6 +111,8 @@ func TestMeshSolve(t *testing.T) {
 			Left:  test.Left,
 			Right: test.Right,
 		}
+		t.Logf("\n            k=%v", mat64.Formatted(mesh.StiffnessMatrix(hc), mat64.Prefix("              ")))
+		t.Logf("\n            f=%v", mat64.Formatted(mesh.ForceMatrix(hc), mat64.Prefix("              ")))
 
 		err = mesh.Solve(hc)
 		if err != nil {
@@ -117,7 +121,7 @@ func TestMeshSolve(t *testing.T) {
 		}
 
 		for i, x := range test.Xs {
-			y := mesh.Interpolate(x)
+			y := mesh.Interpolate([]float64{x})
 			if math.Abs(y-test.Want[i]) > tol {
 				t.Errorf("    FAIL f(%v)=%v, want %v", x, y, test.Want[i])
 			} else {
