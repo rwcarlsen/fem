@@ -2,7 +2,7 @@ package main
 
 import (
 	"bytes"
-	"crypto/md5"
+	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -25,12 +25,12 @@ func (m *Mesh) nodeId(elem, node int) int {
 	return m.nodeIndex[m.Elems[elem].Nodes()[node]]
 }
 
-type posHash [md5.Size]byte
+type posHash [sha1.Size]byte
 
 func hashX(x []float64) posHash {
 	var buf bytes.Buffer
 	binary.Write(&buf, binary.BigEndian, x)
-	return md5.Sum(buf.Bytes())
+	return sha1.Sum(buf.Bytes())
 }
 
 // Finalize generates node ID's and indices for mapping nodes to matrix
@@ -95,7 +95,7 @@ func (m *Mesh) Interpolate(x []float64) float64 {
 			return e.Interpolate(x)
 		}
 	}
-	panic("cannot interpolate ouside of mesh bounds")
+	panic(fmt.Sprintf("cannot interpolate ouside of mesh bounds: x=%v", x))
 }
 
 func (m *Mesh) Solve(k Kernel) error {
