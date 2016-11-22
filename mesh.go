@@ -13,8 +13,8 @@ import (
 
 type Mesh struct {
 	Elems []Element
-	// NodeIndex maps all nodes to a global index/ID
-	NodeIndex map[Node]int
+	// nodeIndex maps all nodes to a global index/ID
+	nodeIndex map[Node]int
 	// indexNode maps all global node indices to a list of nodes at the corresponding position
 	indexNode map[int][]Node
 }
@@ -22,7 +22,7 @@ type Mesh struct {
 // nodeId returns the global node id for the given element index and its local
 // node index.
 func (m *Mesh) nodeId(elem, node int) int {
-	return m.NodeIndex[m.Elems[elem].Nodes()[node]]
+	return m.nodeIndex[m.Elems[elem].Nodes()[node]]
 }
 
 type posHash [md5.Size]byte
@@ -37,7 +37,7 @@ func hashX(x []float64) posHash {
 // indices.  It should be called after all elements have been added to the
 // mesh.
 func (m *Mesh) Finalize() {
-	if len(m.NodeIndex) > 0 {
+	if len(m.nodeIndex) > 0 {
 		return
 	}
 	nextId := 0
@@ -46,12 +46,12 @@ func (m *Mesh) Finalize() {
 		for _, n := range e.Nodes() {
 			hx := hashX(n.X())
 			if id, ok := ids[hx]; ok {
-				m.NodeIndex[n] = id
+				m.nodeIndex[n] = id
 				m.indexNode[id] = append(m.indexNode[id], n)
 				continue
 			}
 
-			m.NodeIndex[n] = nextId
+			m.nodeIndex[n] = nextId
 			m.indexNode[nextId] = append(m.indexNode[nextId], n)
 			ids[hx] = nextId
 			nextId++
@@ -62,7 +62,7 @@ func (m *Mesh) Finalize() {
 // AddElement1D is for adding custom-built elements to a mesh.  When all
 // elements have been added.  New elements
 func (m *Mesh) AddElement1D(e *Element1D) error {
-	if len(m.NodeIndex) > 0 {
+	if len(m.nodeIndex) > 0 {
 		return fmt.Errorf("cannot add elements to a finalized mesh")
 	}
 	m.Elems = append(m.Elems, e)
@@ -72,7 +72,7 @@ func (m *Mesh) AddElement1D(e *Element1D) error {
 // NewMeshSimple1D creates a simply-connected mesh with nodes at the specified
 // points and degree nodes per element. The returned mesh has been finalized.
 func NewMeshSimple1D(nodePos []float64, degree int) (*Mesh, error) {
-	m := &Mesh{NodeIndex: map[Node]int{}, indexNode: map[int][]Node{}}
+	m := &Mesh{nodeIndex: map[Node]int{}, indexNode: map[int][]Node{}}
 	if (len(nodePos)-1)%(degree-1) != 0 {
 		return nil, fmt.Errorf("incompatible mesh degree (%v) and node count (%v)", degree, len(nodePos))
 	}
