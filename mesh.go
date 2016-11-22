@@ -244,6 +244,7 @@ type Element interface {
 	Interpolate(x []float64) float64
 	IntegrateStiffness(k Kernel, wNode, uNode int) float64
 	IntegrateForce(k Kernel, wNode int) float64
+	Bounds() (low, up []float64)
 }
 
 // Element1D holds a collection of nodes comprising a finite element. The
@@ -252,6 +253,8 @@ type Element interface {
 type Element1D struct {
 	nodes []Node
 }
+
+func (e *Element1D) Bounds() (low, up []float64) { return []float64{e.left()}, []float64{e.right()} }
 
 func (e *Element1D) Nodes() []Node { return e.nodes }
 
