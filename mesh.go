@@ -12,7 +12,7 @@ import (
 )
 
 type Mesh struct {
-	Elems []*Element
+	Elems []Element
 	// NodeIndex maps all nodes to a global index/ID
 	NodeIndex map[Node]int
 	// indexNode maps all global node indices to a list of nodes at the corresponding position
@@ -22,7 +22,7 @@ type Mesh struct {
 // nodeId returns the global node id for the given element index and its local
 // node index.
 func (m *Mesh) nodeId(elem, node int) int {
-	return m.NodeIndex[m.Elems[elem].Nodes[node]]
+	return m.NodeIndex[m.Elems[elem].Nodes()[node]]
 }
 
 type posHash [md5.Size]byte
@@ -43,7 +43,7 @@ func (m *Mesh) Finalize() {
 	nextId := 0
 	ids := map[posHash]int{}
 	for _, e := range m.Elems {
-		for _, n := range e.Nodes {
+		for _, n := range e.Nodes() {
 			hx := hashX(n.X())
 			if id, ok := ids[hx]; ok {
 				m.NodeIndex[n] = id
@@ -59,9 +59,9 @@ func (m *Mesh) Finalize() {
 	}
 }
 
-// AddElement is for adding custom-built elements to a mesh.  When all
+// AddElement1D is for adding custom-built elements to a mesh.  When all
 // elements have been added.  New elements
-func (m *Mesh) AddElement(e *Element) error {
+func (m *Mesh) AddElement1D(e *Element1D) error {
 	if len(m.NodeIndex) > 0 {
 		return fmt.Errorf("cannot add elements to a finalized mesh")
 	}
@@ -83,7 +83,7 @@ func NewMeshSimple1D(nodePos []float64, degree int) (*Mesh, error) {
 		for j := 0; j < degree; j++ {
 			xs[j] = nodePos[i*(degree-1)+j]
 		}
-		m.AddElement(NewElementSimple1D(xs))
+		m.AddElement1D(NewElementSimple1D(xs))
 	}
 	m.Finalize()
 	return m, nil
@@ -123,7 +123,7 @@ func (m *Mesh) ForceMatrix(k Kernel) *mat64.Dense {
 	size := len(m.indexNode)
 	mat := mat64.NewDense(size, 1, nil)
 	for e, elem := range m.Elems {
-		for i := range elem.Nodes {
+		for i := range elem.Nodes() {
 			v := elem.IntegrateForce(k, i)
 			a := m.nodeId(e, i)
 			mat.Set(a, 0, mat.At(a, 0)+v)
@@ -137,8 +137,8 @@ func (m *Mesh) StiffnessMatrix(k Kernel) *mat64.Dense {
 	size := len(m.indexNode)
 	mat := mat64.NewDense(size, size, nil)
 	for e, elem := range m.Elems {
-		for i := range elem.Nodes {
-			for j := i; j < len(elem.Nodes); j++ {
+		for i := range elem.Nodes() {
+			for j := i; j < len(elem.Nodes()); j++ {
 				v := elem.IntegrateStiffness(k, i, j)
 				a, b := m.nodeId(e, i), m.nodeId(e, j)
 				mat.Set(a, b, mat.At(a, b)+v)
@@ -238,40 +238,50 @@ func (n *LagrangeNode) DerivWeight(x []float64, dim int) float64 {
 	return dudx
 }
 
-// Element holds a collection of nodes comprising a finite element. The
-// element is calibrated to a particular (approximate) solution and can be
-// queried to provide said solution at various points within the element.
-type Element struct {
-	Nodes []Node
+type Element interface {
+	Contains(x []float64) bool
+	Nodes() []Node
+	Interpolate(x []float64) float64
+	IntegrateStiffness(k Kernel, wNode, uNode int) float64
+	IntegrateForce(k Kernel, wNode int) float64
 }
 
-func (e *Element) Contains(x []float64) bool {
+// Element1D holds a collection of nodes comprising a finite element. The
+// element is calibrated to a particular (approximate) solution and can be
+// queried to provide said solution at various points within the element.
+type Element1D struct {
+	nodes []Node
+}
+
+func (e *Element1D) Nodes() []Node { return e.nodes }
+
+func (e *Element1D) Contains(x []float64) bool {
 	xx := x[0]
 	return e.left() <= xx && xx <= e.right()
 }
 
-func (e *Element) left() float64  { return e.Nodes[0].X()[0] }
-func (e *Element) right() float64 { return e.Nodes[len(e.Nodes)-1].X()[0] }
+func (e *Element1D) left() float64  { return e.nodes[0].X()[0] }
+func (e *Element1D) right() float64 { return e.nodes[len(e.nodes)-1].X()[0] }
 
 // NewElementSimple1D generates a lagrange polynomial interpolating element of
 // degree len(xs)-1 using the values in xs as the interpolation points/nodes.
-func NewElementSimple1D(xs []float64) *Element {
-	e := &Element{}
+func NewElementSimple1D(xs []float64) *Element1D {
+	e := &Element1D{}
 	for i := range xs {
 		n := NewLagrangeNode(i, xs)
-		e.Nodes = append(e.Nodes, n)
+		e.nodes = append(e.nodes, n)
 	}
 	return e
 }
 
 // Interpolate returns the value of the element at x - i.e. the superposition
 // of samples from each of the element nodes.
-func (e *Element) Interpolate(x []float64) float64 {
+func (e *Element1D) Interpolate(x []float64) float64 {
 	if xx := x[0]; xx < e.left() || xx > e.right() {
 		return 0
 	}
 	u := 0.0
-	for _, n := range e.Nodes {
+	for _, n := range e.nodes {
 		u += n.Sample(x)
 	}
 	return u
@@ -279,26 +289,26 @@ func (e *Element) Interpolate(x []float64) float64 {
 
 // Deriv returns the derivative of the element at x - i.e. the superposition
 // of derivatives from each of the element nodes.
-func (e *Element) Deriv(x []float64) float64 {
+func (e *Element1D) Deriv(x []float64) float64 {
 	if xx := x[0]; xx < e.left() || xx > e.right() {
 		return 0
 	}
 	u := 0.0
-	for _, n := range e.Nodes {
+	for _, n := range e.nodes {
 		u += n.DerivSample(x, 0)
 	}
 	return u
 }
 
-func (e *Element) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
-	w, u := e.Nodes[wNode], e.Nodes[uNode]
+func (e *Element1D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
+	w, u := e.nodes[wNode], e.nodes[uNode]
 
 	fn := func(x float64) float64 {
 		xs := []float64{x}
 		pars := &KernelParams{X: xs, U: u.Sample(xs), GradU: u.DerivSample(xs, 0), W: w.Weight(xs), GradW: w.DerivWeight(xs, 0), Penalty: DefaultPenalty}
 		return k.VolIntU(pars)
 	}
-	volU := quad.Fixed(fn, e.left(), e.right(), len(e.Nodes), quad.Legendre{}, 0)
+	volU := quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
 
 	x1 := []float64{e.left()}
 	x2 := []float64{e.right()}
@@ -309,15 +319,15 @@ func (e *Element) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
 	return volU + boundU1 + boundU2
 }
 
-func (e *Element) IntegrateForce(k Kernel, wNode int) float64 {
-	w := e.Nodes[wNode]
+func (e *Element1D) IntegrateForce(k Kernel, wNode int) float64 {
+	w := e.nodes[wNode]
 
 	fn := func(x float64) float64 {
 		xvec := []float64{x}
 		pars := &KernelParams{X: xvec, U: 0, GradU: 0, W: w.Weight(xvec), GradW: w.DerivWeight(xvec, 0), Penalty: DefaultPenalty}
 		return k.VolInt(pars)
 	}
-	vol := quad.Fixed(fn, e.left(), e.right(), len(e.Nodes), quad.Legendre{}, 0)
+	vol := quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
 
 	x1 := []float64{e.left()}
 	x2 := []float64{e.right()}
@@ -335,7 +345,7 @@ func (e *Element) IntegrateForce(k Kernel, wNode int) float64 {
 //
 //    [x]	[value]	[derivative]
 //    ...
-func (e *Element) PrintFunc(w io.Writer, nsamples int) {
+func (e *Element1D) PrintFunc(w io.Writer, nsamples int) {
 	xrange := e.right() - e.left()
 	for i := -1 * nsamples / 10; i < nsamples+2*nsamples/10; i++ {
 		x := []float64{e.left() + xrange*float64(i)/float64(nsamples)}
@@ -349,12 +359,12 @@ func (e *Element) PrintFunc(w io.Writer, nsamples int) {
 //
 //    [x]	[LagrangeNode1-shape(x)]	[LagrangeNode1-shapederiv(x)]	[LagrangeNode2-shape(x)]
 //    ...
-func (e *Element) PrintShapeFuncs(w io.Writer, nsamples int) {
+func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
 	xrange := e.right() - e.left()
 	for i := -1 * nsamples / 10; i < nsamples+2*nsamples/10; i++ {
 		x := []float64{e.left() + xrange*float64(i)/float64(nsamples)}
 		fmt.Fprintf(w, "%v", x)
-		for _, n := range e.Nodes {
+		for _, n := range e.nodes {
 			if x[0] < e.left() || x[0] > e.right() {
 				fmt.Fprintf(w, "\t0\t0")
 			} else {

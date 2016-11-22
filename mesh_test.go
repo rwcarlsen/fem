@@ -61,7 +61,7 @@ func TestElement(t *testing.T) {
 
 	for i, test := range tests {
 		elem := NewElementSimple1D(test.Xs)
-		for i, n := range elem.Nodes {
+		for i, n := range elem.Nodes() {
 			n.Set(test.Ys[i], 1)
 		}
 		y := elem.Interpolate([]float64{test.SampleX})
