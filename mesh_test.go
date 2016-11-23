@@ -133,21 +133,21 @@ func TestMeshSolve(t *testing.T) {
 }
 
 func BenchmarkMeshBuild(b *testing.B) {
+	b.Run("nodes=10", benchMeshBuildN(10))
 	b.Run("nodes=100", benchMeshBuildN(100))
 	b.Run("nodes=1000", benchMeshBuildN(1000))
-	b.Run("nodes=10000", benchMeshBuildN(10000))
 }
 
 func BenchmarkSolve(b *testing.B) {
+	b.Run("nodes=10", benchSolveN(10))
 	b.Run("nodes=100", benchSolveN(100))
 	b.Run("nodes=1000", benchSolveN(1000))
-	b.Run("nodes=10000", benchSolveN(10000))
 }
 
 func BenchmarkInterpolate(b *testing.B) {
+	b.Run("nodes=10", benchInterpolateN(10))
 	b.Run("nodes=100", benchInterpolateN(100))
 	b.Run("nodes=1000", benchInterpolateN(1000))
-	b.Run("nodes=10000", benchInterpolateN(10000))
 }
 
 func benchMeshBuildN(n int) func(b *testing.B) {

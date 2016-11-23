@@ -17,6 +17,7 @@ type Mesh struct {
 	nodeIndex map[Node]int
 	// indexNode maps all global node indices to a list of nodes at the corresponding position
 	indexNode map[int][]Node
+	box       *Box
 }
 
 // nodeId returns the global node id for the given element index and its local
@@ -57,6 +58,8 @@ func (m *Mesh) Finalize() {
 			nextId++
 		}
 	}
+
+	m.box = NewBox(m.Elems, 10, 10)
 }
 
 // AddElement1D is for adding custom-built elements to a mesh.  When all
@@ -90,12 +93,18 @@ func NewMeshSimple1D(nodePos []float64, degree int) (*Mesh, error) {
 }
 
 func (m *Mesh) Interpolate(x []float64) float64 {
+	elem, err := m.box.Find(x)
+	if err != nil {
+		panic(err)
+	}
+	return elem.Interpolate(x)
+
 	for _, e := range m.Elems {
 		if e.Contains(x) {
 			return e.Interpolate(x)
 		}
 	}
-	panic(fmt.Sprintf("cannot interpolate ouside of mesh bounds: x=%v", x))
+	panic("cannot interpolate outside mesh bounds")
 }
 
 func (m *Mesh) Solve(k Kernel) error {
