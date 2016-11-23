@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"io/ioutil"
+	"testing"
+)
 
 func TestCombinations(t *testing.T) {
 	ndims := 2
@@ -16,12 +19,15 @@ func TestSplitBox(t *testing.T) {
 	nsplits := 3
 	b.splitBox(nsplits)
 	for _, b := range b.children {
-		t.Errorf("low=%v, up=%v", b.Low, b.Up)
+		t.Logf("low=%v, up=%v", b.Low, b.Up)
 	}
 }
 
 func TestNewBox(t *testing.T) {
 	mesh, _ := NewMeshSimple1D([]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, 2)
-	b := newBox(mesh.Elems)
-	for
+	elemTarget := 3
+	nsplit := 2
+	b := newBox(mesh.Elems, elemTarget, nsplit)
+	b.printTree(ioutil.Discard, 0)
+	//b.printTree(os.Stdout, 0)
 }

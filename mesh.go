@@ -239,12 +239,15 @@ func (n *LagrangeNode) DerivWeight(x []float64, dim int) float64 {
 }
 
 type Element interface {
-	Contains(x []float64) bool
 	Nodes() []Node
 	Interpolate(x []float64) float64
 	IntegrateStiffness(k Kernel, wNode, uNode int) float64
 	IntegrateForce(k Kernel, wNode int) float64
+	// Bounds returns a hyper-cubic bounding box defined by low and up values
+	// in each dimension.
 	Bounds() (low, up []float64)
+	// Contains returns true if x is inside this element.
+	Contains(x []float64) bool
 }
 
 // Element1D holds a collection of nodes comprising a finite element. The

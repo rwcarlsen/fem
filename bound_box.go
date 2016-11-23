@@ -1,5 +1,11 @@
 package main
 
+import (
+	"fmt"
+	"io"
+	"strings"
+)
+
 type box struct {
 	Low      []float64
 	Up       []float64
@@ -7,49 +13,7 @@ type box struct {
 	children []*box
 }
 
-func (b *box) contains(e Element) bool {
-	low, up := e.Bounds()
-	for i := range low {
-		center := low[i] + (up[i]-low[i])/2
-		if center < b.Low[i] || b.Up[i] < center {
-			return false
-		}
-	}
-	return true
-}
-
-func (b *box) Find(x []float64) Element {
-	for _, child := range b.children {
-		for i := range x {
-			if child.Low[i] <= x[i] && x[i] <= child.Up[i] {
-				return child.Find(x)
-			}
-		}
-		return childchild
-	}
-}
-
-func (b *box) split(elemTarget, nsplit int) {
-	if len(b.Elems) < 100 {
-		return
-	}
-
-	b.splitBox(nsplit)
-	for _, elem := range b.Elems {
-		for _, child := range b.children {
-			if child.contains(elem) {
-				child.Elems = append(child.Elems, elem)
-				break
-			}
-		}
-	}
-
-	for _, child := range b.children {
-		child.split(elemTarget, nsplit)
-	}
-}
-
-func newBox(elems []Element) *box {
+func newBox(elems []Element, elemTarget, nsplit int) *box {
 	lowest, upest := elems[0].Bounds()
 	for _, elem := range elems[1:] {
 		low, up := elem.Bounds()
@@ -63,22 +27,68 @@ func newBox(elems []Element) *box {
 		}
 	}
 
-	nsplit := 3
 	b := &box{Low: lowest, Up: upest, Elems: elems}
-	b.split(100, nsplit)
+	b.split(elemTarget, nsplit)
 	return b
 }
 
-func combinations(ndims, nsplits int, prefix []int) [][]int {
-	if len(prefix) == ndims {
-		return [][]int{prefix}
+func (b *box) printTree(w io.Writer, level int) {
+	prefix := strings.Repeat(" ", level*4)
+	fmt.Fprintf(w, prefix+"Box (low=%v, up=%v)\n", b.Low, b.Up)
+	for _, e := range b.Elems {
+		low, up := e.Bounds()
+		fmt.Fprintf(w, prefix+"    Elem (low=%v, up=%v)\n", low, up)
+	}
+	for _, child := range b.children {
+		child.printTree(w, level+1)
+	}
+}
+
+// contains returns true if there is a non-null intersection between this box
+// and e's bounding box.
+func (b *box) contains(e Element) bool {
+	low, up := e.Bounds()
+	for i := range low {
+		if up[i] < b.Low[i] || b.Up[i] < low[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (b *box) Find(x []float64) (Element, error) {
+	for _, child := range b.children {
+		for i := range x {
+			if child.Low[i] <= x[i] && x[i] <= child.Up[i] {
+				return child.Find(x)
+			}
+		}
+	}
+	for _, e := range b.Elems {
+		if e.Contains(x) {
+			return e, nil
+		}
+	}
+	return nil, fmt.Errorf("element not found in bounding box tree for x=%v")
+}
+
+func (b *box) split(elemTarget, nsplit int) {
+	if len(b.Elems) <= elemTarget {
+		return
 	}
 
-	combs := [][]int{}
-	for i := 0; i < nsplits; i++ {
-		combs = append(combs, combinations(ndims, nsplits, append(prefix, i))...)
+	b.splitBox(nsplit)
+	for _, elem := range b.Elems {
+		for _, child := range b.children {
+			if child.contains(elem) {
+				child.Elems = append(child.Elems, elem)
+			}
+		}
 	}
-	return combs
+
+	for _, child := range b.children {
+		child.split(elemTarget, nsplit)
+	}
 }
 
 func (b *box) splitBox(n int) {
@@ -96,4 +106,16 @@ func (b *box) splitBox(n int) {
 			sub.Up[dim] = sub.Low[dim] + dx/float64(n)
 		}
 	}
+}
+
+func combinations(ndims, nsplits int, prefix []int) [][]int {
+	if len(prefix) == ndims {
+		return [][]int{prefix}
+	}
+
+	combs := [][]int{}
+	for i := 0; i < nsplits; i++ {
+		combs = append(combs, combinations(ndims, nsplits, append(prefix, i))...)
+	}
+	return combs
 }
