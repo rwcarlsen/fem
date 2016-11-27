@@ -64,7 +64,10 @@ func TestHeatKernel() {
 		x1 := hc.X[0]
 		x2 := hc.X[len(hc.X)-1]
 		x := []float64{float64(i)/float64(n)*(x2-x1) + x1}
-		y := mesh.Interpolate(x)
+		y, err := mesh.Interpolate(x)
+		if err != nil {
+			log.Fatal(err)
+		}
 		fmt.Printf("%v\t%v\n", x, y)
 	}
 }

@@ -92,19 +92,12 @@ func NewMeshSimple1D(nodePos []float64, degree int) (*Mesh, error) {
 	return m, nil
 }
 
-func (m *Mesh) Interpolate(x []float64) float64 {
+func (m *Mesh) Interpolate(x []float64) (float64, error) {
 	elem, err := m.box.Find(x)
 	if err != nil {
-		panic(err)
+		return 0, err
 	}
-	return elem.Interpolate(x)
-
-	for _, e := range m.Elems {
-		if e.Contains(x) {
-			return e.Interpolate(x)
-		}
-	}
-	panic("cannot interpolate outside mesh bounds")
+	return Interpolate(elem, x)
 }
 
 func (m *Mesh) Solve(k Kernel) error {
@@ -160,13 +153,22 @@ func (m *Mesh) StiffnessMatrix(k Kernel) *mat64.Dense {
 	return mat
 }
 
+// Node represents a node and its interpolant within a finite element.
 type Node interface {
-	// X returns the position of this node
+	// X returns the global/absolute position of the node.
 	X() []float64
+	// Sample returns the value of the node's shape/solution function at x.
 	Sample(x []float64) float64
+	// Weight returns the value of the node'd weight/test function at x.
 	Weight(x []float64) float64
+	// DerivSample returns the partial derivative for the dim'th dimension
+	// of the node's shape function at x.
 	DerivSample(x []float64, dim int) float64
+	// DerivWeight returns the partial derivative for the dim'th dimension of
+	// the node's weight function at x.
 	DerivWeight(x []float64, dim int) float64
+	// Set normalizes the node's shape/solution and weight/test function to be
+	// equal to sample and weight at the node's position X().
 	Set(sample, weight float64)
 }
 
@@ -202,7 +204,6 @@ func (n *LagrangeNode) X() []float64 { return []float64{n.Xvals[n.Index]} }
 
 func (n *LagrangeNode) Set(sample, weight float64) { n.U, n.W = sample, weight }
 
-// Sample returns the value of the shape function at x.
 func (n *LagrangeNode) Sample(x []float64) float64 {
 	xx, u := x[0], n.U
 	for i, x0 := range n.Xvals {
@@ -247,21 +248,28 @@ func (n *LagrangeNode) DerivWeight(x []float64, dim int) float64 {
 	return dudx
 }
 
+// Element represents an element and provides integration and bounds related
+// functionality required for approximating differential equation solutions.
 type Element interface {
+	// Nodes returns a persistent list of nodes that comprise this
+	// element in no particular order but in consistent order.
 	Nodes() []Node
-	Interpolate(x []float64) float64
+	// IntegrateStiffness returns the result of the integration terms of the
+	// weak form of the differential equation that include/depend on u(x) (the
+	// solution or dependent variable).
 	IntegrateStiffness(k Kernel, wNode, uNode int) float64
+	// IntegrateForce returns the result of the integration terms of the weak
+	// form of the differential equation that do *not* include/depend on u(x).
 	IntegrateForce(k Kernel, wNode int) float64
 	// Bounds returns a hyper-cubic bounding box defined by low and up values
 	// in each dimension.
 	Bounds() (low, up []float64)
-	// Contains returns true if x is inside this element.
+	// Contains returns true if x is inside this element and false otherwise.
 	Contains(x []float64) bool
 }
 
-// Element1D holds a collection of nodes comprising a finite element. The
-// element is calibrated to a particular (approximate) solution and can be
-// queried to provide said solution at various points within the element.
+// Element1D represents a 1D finite element.  It assumes len(x) == 1 (i.e.
+// only one dimension of independent variables.
 type Element1D struct {
 	nodes []Node
 }
@@ -289,30 +297,32 @@ func NewElementSimple1D(xs []float64) *Element1D {
 	return e
 }
 
-// Interpolate returns the value of the element at x - i.e. the superposition
-// of samples from each of the element nodes.
-func (e *Element1D) Interpolate(x []float64) float64 {
-	if xx := x[0]; xx < e.left() || xx > e.right() {
-		return 0
+// Interpolate returns the (approximated) value of the function within the
+// element at position x.  An error is returned if x is not contained inside
+// the element.
+func Interpolate(e Element, x []float64) (float64, error) {
+	if !e.Contains(x) {
+		return 0, fmt.Errorf("point %v is not inside the element", x)
 	}
 	u := 0.0
-	for _, n := range e.nodes {
+	for _, n := range e.Nodes() {
 		u += n.Sample(x)
 	}
-	return u
+	return u, nil
 }
 
 // Deriv returns the derivative of the element at x - i.e. the superposition
-// of derivatives from each of the element nodes.
-func (e *Element1D) Deriv(x []float64) float64 {
-	if xx := x[0]; xx < e.left() || xx > e.right() {
-		return 0
+// of derivatives from each of the element nodes. An error is returned if x is
+// not contained inside the element.
+func Deriv(e Element, x []float64, dim int) (float64, error) {
+	if !e.Contains(x) {
+		return 0, fmt.Errorf("point %v is not inside the element", x)
 	}
 	u := 0.0
-	for _, n := range e.nodes {
-		u += n.DerivSample(x, 0)
+	for _, n := range e.Nodes() {
+		u += n.DerivSample(x, dim)
 	}
-	return u
+	return u, nil
 }
 
 func (e *Element1D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
@@ -364,7 +374,15 @@ func (e *Element1D) PrintFunc(w io.Writer, nsamples int) {
 	xrange := e.right() - e.left()
 	for i := -1 * nsamples / 10; i < nsamples+2*nsamples/10; i++ {
 		x := []float64{e.left() + xrange*float64(i)/float64(nsamples)}
-		fmt.Fprintf(w, "%v\t%v\t%v\n", x, e.Interpolate(x), e.Deriv(x))
+		v, err := Interpolate(e, x)
+		if err != nil {
+			panic(err)
+		}
+		d, err := Deriv(e, x, 0)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Fprintf(w, "%v\t%v\t%v\n", x, v, d)
 	}
 }
 

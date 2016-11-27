@@ -65,8 +65,10 @@ func TestElement(t *testing.T) {
 		for i, n := range elem.Nodes() {
 			n.Set(test.Ys[i], 1)
 		}
-		y := elem.Interpolate([]float64{test.SampleX})
-		if y != test.Want {
+		y, err := Interpolate(elem, []float64{test.SampleX})
+		if err != nil {
+			t.Errorf("FAIL test %v (xs=%v, ys=%v): %v", i+1, test.Xs, test.Ys, err)
+		} else if y != test.Want {
 			t.Errorf("FAIL test %v (xs=%v, ys=%v): f(%v)=%v, want %v", i+1, test.Xs, test.Ys, test.SampleX, y, test.Want)
 		} else {
 			t.Logf("     test %v (xs=%v, ys=%v): f(%v)=%v", i+1, test.Xs, test.Ys, test.SampleX, y)
@@ -122,8 +124,10 @@ func TestMeshSolve(t *testing.T) {
 		}
 
 		for i, x := range test.Xs {
-			y := mesh.Interpolate([]float64{x})
-			if math.Abs(y-test.Want[i]) > tol {
+			y, err := mesh.Interpolate([]float64{x})
+			if err != nil {
+				t.Errorf("    FAIL f(%v)=??: %v", x, err)
+			} else if math.Abs(y-test.Want[i]) > tol {
 				t.Errorf("    FAIL f(%v)=%v, want %v", x, y, test.Want[i])
 			} else {
 				t.Logf("         f(%v)=%v", x, y)
