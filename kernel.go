@@ -25,7 +25,8 @@ type KernelParams struct {
 	// will actually determine the nodal U values directly.  For nonlinear
 	// systems, an Newton or similar will be used to iterate toward better U
 	// guesses.
-	U     float64
+	U float64
+	// GradU holds the derivative of the solution shape function.
 	GradU float64
 	// W holds the value of the weight/test function
 	W float64

@@ -11,13 +11,20 @@ import (
 	"github.com/gonum/matrix/mat64"
 )
 
+// Mesh represents a collection of elements constituting an approximation for
+// a differential equation solution over a closed, contiguous volume.
 type Mesh struct {
+	// Elems is an (arbitrarily) ordered list of elements that make up the
+	// mesh.
 	Elems []Element
 	// nodeIndex maps all nodes to a global index/ID
 	nodeIndex map[Node]int
-	// indexNode maps all global node indices to a list of nodes at the corresponding position
+	// indexNode maps all global node indices to a list of nodes at the
+	// corresponding position
 	indexNode map[int][]Node
-	box       *Box
+	// box is a helper to speed up the identification of elements that enclose
+	// certain points in the mesh.  This helps lookups to be more performant.
+	box *Box
 }
 
 // nodeId returns the global node id for the given element index and its local
@@ -28,16 +35,19 @@ func (m *Mesh) nodeId(elem, node int) int {
 
 type posHash [sha1.Size]byte
 
+// hashX generates a unique identifier for each node position in a finite
+// element mesh.  This is used to corroborate nodes at the same position x in
+// different elements (i.e. nodes that are shared between elements).
 func hashX(x []float64) posHash {
 	var buf bytes.Buffer
 	binary.Write(&buf, binary.BigEndian, x)
 	return sha1.Sum(buf.Bytes())
 }
 
-// Finalize generates node ID's and indices for mapping nodes to matrix
+// finalize generates node ID's and indices for mapping nodes to matrix
 // indices.  It should be called after all elements have been added to the
 // mesh.
-func (m *Mesh) Finalize() {
+func (m *Mesh) finalize() {
 	if len(m.nodeIndex) > 0 {
 		return
 	}
@@ -62,9 +72,10 @@ func (m *Mesh) Finalize() {
 	m.box = NewBox(m.Elems, 10, 10)
 }
 
-// AddElement1D is for adding custom-built elements to a mesh.  When all
-// elements have been added.  New elements
-func (m *Mesh) AddElement1D(e *Element1D) error {
+// AddElement is for adding custom-built elements to a mesh.  When all
+// elements have been added.  Elements must form a single, contiguous domain
+// (i.e.  with no holes/gaps).
+func (m *Mesh) AddElement(e Element) error {
 	if len(m.nodeIndex) > 0 {
 		return fmt.Errorf("cannot add elements to a finalized mesh")
 	}
@@ -73,7 +84,7 @@ func (m *Mesh) AddElement1D(e *Element1D) error {
 }
 
 // NewMeshSimple1D creates a simply-connected mesh with nodes at the specified
-// points and degree nodes per element. The returned mesh has been finalized.
+// points and degree nodes per element.
 func NewMeshSimple1D(nodePos []float64, degree int) (*Mesh, error) {
 	m := &Mesh{nodeIndex: map[Node]int{}, indexNode: map[int][]Node{}}
 	if (len(nodePos)-1)%(degree-1) != 0 {
@@ -86,12 +97,14 @@ func NewMeshSimple1D(nodePos []float64, degree int) (*Mesh, error) {
 		for j := 0; j < degree; j++ {
 			xs[j] = nodePos[i*(degree-1)+j]
 		}
-		m.AddElement1D(NewElementSimple1D(xs))
+		m.AddElement(NewElementSimple1D(xs))
 	}
-	m.Finalize()
 	return m, nil
 }
 
+// Interpolate returns the finite element approximate for the solution at x.
+// Solve must have been called before this for it to return meaningful
+// results.
 func (m *Mesh) Interpolate(x []float64) (float64, error) {
 	elem, err := m.box.Find(x)
 	if err != nil {
@@ -100,7 +113,23 @@ func (m *Mesh) Interpolate(x []float64) (float64, error) {
 	return Interpolate(elem, x)
 }
 
+// reset renormalizes all the node shape functions in the mesh to one - i.e.
+// resets and throws away any previously computed approximations via Solve.
+func (m *Mesh) reset() {
+	for _, e := range m.Elems {
+		for _, n := range e.Nodes() {
+			n.Set(1, 1)
+		}
+	}
+}
+
+// Solve computes the finite element approximation for the the differential
+// equation represented by k.  This can be called multiple times with
+// different kernels, but any previously computed DE approximations will be
+// overwritten.  This solves the system K*u=f for u where K is the stiffness matrix
+// and f is the force matrix.
 func (m *Mesh) Solve(k Kernel) error {
+	m.reset()
 	A := m.StiffnessMatrix(k)
 	b := m.ForceMatrix(k)
 	var x mat64.Dense
@@ -120,8 +149,12 @@ func (m *Mesh) Solve(k Kernel) error {
 	return nil
 }
 
+// ForceMatrix builds the matrix with one entry for each node representing the
+// result of the integration terms of the weak form of the differential
+// equation in k that do *not* include/depend on u(x).  This is the f column
+// vector in the equation the K*u=f.
 func (m *Mesh) ForceMatrix(k Kernel) *mat64.Dense {
-	m.Finalize()
+	m.finalize()
 	size := len(m.indexNode)
 	mat := mat64.NewDense(size, 1, nil)
 	for e, elem := range m.Elems {
@@ -134,8 +167,12 @@ func (m *Mesh) ForceMatrix(k Kernel) *mat64.Dense {
 	return mat
 }
 
+// StiffnessMatrix builds the matrix with one entry for each combination of
+// node test and weight functions representing the result of the integration
+// terms of the weak form of the differential equation in k that
+// include/depend on u(x).  This is the K matrix in the equation the K*u=f.
 func (m *Mesh) StiffnessMatrix(k Kernel) *mat64.Dense {
-	m.Finalize()
+	m.finalize()
 	size := len(m.indexNode)
 	mat := mat64.NewDense(size, size, nil)
 	for e, elem := range m.Elems {
@@ -182,13 +219,24 @@ type Node interface {
 //
 type LagrangeNode struct {
 	// Index identifies the interpolation point in Xvals where the node's
-	// shape function is equal to Val
+	// shape function is equal to U or W for the solution and weight
+	// respectively.
 	Index int
+	// Xvals represent all the interpolation points where the node's
+	// polynomial shape function is fixed/specified (i.e. either zero or U/W).
+	// When constructing elements, all the points in Xvals must each have a
+	// node that the Index is set to.
 	Xvals []float64
-	U     float64
-	W     float64
+	// U is the value of the node's solution shape function at Xvals[Index].
+	U float64
+	// W is the value of the node's weight shape function at Xvals[Index].
+	W float64
 }
 
+// NewLagrangeNode returns a lagrange interpolating polynomial shape function
+// backed node with U and W set to 1.0.  xs represents the interpolation
+// points and xIndex identifies the point in xs where the polynomial is equal
+// to U/W instead of zero.
 func NewLagrangeNode(xIndex int, xs []float64) *LagrangeNode {
 	return &LagrangeNode{
 		Index: xIndex,
@@ -198,8 +246,6 @@ func NewLagrangeNode(xIndex int, xs []float64) *LagrangeNode {
 	}
 }
 
-// X returns the x interpolation point where the node's shape function is
-// non-zero.
 func (n *LagrangeNode) X() []float64 { return []float64{n.Xvals[n.Index]} }
 
 func (n *LagrangeNode) Set(sample, weight float64) { n.U, n.W = sample, weight }
@@ -215,11 +261,8 @@ func (n *LagrangeNode) Sample(x []float64) float64 {
 	return u
 }
 
-// Weight returns the value of the weight function at x.
 func (n *LagrangeNode) Weight(x []float64) float64 { return n.Sample(x) / n.U * n.W }
 
-// DerivSample returns the partial derivative of the dimension dim for the
-// shape function at x.
 func (n *LagrangeNode) DerivSample(x []float64, dim int) float64 {
 	xx, u := x[0], n.U
 	dudx := 0.0
@@ -233,8 +276,6 @@ func (n *LagrangeNode) DerivSample(x []float64, dim int) float64 {
 	return dudx
 }
 
-// DerivWeight returns the partial derivative of the dimension dim for the
-// weight function at x.
 func (n *LagrangeNode) DerivWeight(x []float64, dim int) float64 {
 	xx, u := x[0], n.U
 	dudx := 0.0
