@@ -4,7 +4,7 @@ type BoundaryType int
 
 const (
 	Essential BoundaryType = iota
-	Dirichlet
+	Neumann
 )
 
 type Boundary struct {
@@ -13,9 +13,9 @@ type Boundary struct {
 }
 
 func EssentialBC(u float64) *Boundary     { return &Boundary{Essential, u} }
-func DirichletBC(gradU float64) *Boundary { return &Boundary{Dirichlet, gradU} }
+func NeumannBC(gradU float64) *Boundary { return &Boundary{Neumann, gradU} }
 
-const DefaultPenalty = 1e14
+const DefaultPenalty = 1e8
 
 type KernelParams struct {
 	X []float64
@@ -126,12 +126,12 @@ func (hc *HeatConduction) BoundaryIntU(p *KernelParams) float64 {
 	}
 
 	if p.X[0] == hc.X[0] {
-		if hc.Left.Type == Dirichlet {
+		if hc.Left.Type == Neumann {
 			return 0
 		}
 		return p.W * hc.Area * p.Penalty * p.U
 	} else {
-		if hc.Right.Type == Dirichlet {
+		if hc.Right.Type == Neumann {
 			return 0
 		}
 		return p.W * hc.Area * p.Penalty * p.U

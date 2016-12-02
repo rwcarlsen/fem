@@ -42,7 +42,7 @@ func TestHeatKernel() {
 		// Area is the cross section area of the conduction medium
 		Area:  0.1,            // m^2
 		Left:  EssentialBC(0), // deg C
-		Right: DirichletBC(5), // W/m^2
+		Right: NeumannBC(5), // W/m^2
 	}
 	mesh, err := NewMeshSimple1D(hc.X, degree)
 	if err != nil {

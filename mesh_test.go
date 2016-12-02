@@ -94,7 +94,7 @@ func TestMeshSolve(t *testing.T) {
 			S:      5,
 			Area:   0.1,
 			Left:   EssentialBC(0),
-			Right:  DirichletBC(5),
+			Right:  NeumannBC(5),
 			Want:   []float64{0, 145, 190},
 		},
 	}
@@ -190,7 +190,7 @@ func benchSolveN(n int) func(b *testing.B) {
 			S:     ConstVal(5),    // W/m
 			Area:  0.1,            // m^2
 			Left:  EssentialBC(0), // deg C
-			Right: DirichletBC(5), // W/m^2
+			Right: NeumannBC(5), // W/m^2
 		}
 
 		b.ResetTimer()
@@ -218,7 +218,7 @@ func benchInterpolateN(n int) func(b *testing.B) {
 			S:     ConstVal(5),    // W/m
 			Area:  0.1,            // m^2
 			Left:  EssentialBC(0), // deg C
-			Right: DirichletBC(5), // W/m^2
+			Right: NeumannBC(5), // W/m^2
 		}
 		mesh.Solve(hc)
 
