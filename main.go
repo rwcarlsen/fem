@@ -1,13 +1,18 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 
 	"github.com/gonum/matrix/mat64"
 )
 
+var printmats = flag.Bool("print", false, "print stiffness and force matrices")
+var nnodes = flag.Int("nodes", 5, "number of nodes/domain divisions-1")
+
 func main() {
+	flag.Parse()
 	TestHeatKernel()
 	//xs := []float64{0, 1, 2, 3}
 
@@ -35,23 +40,30 @@ func main() {
 
 func TestHeatKernel() {
 	degree := 3
+	xs := []float64{}
+	for i := 0; i < *nnodes; i++ {
+		xs = append(xs, float64(i)/float64(*nnodes-1)*4)
+	}
 	hc := &HeatConduction{
-		X: []float64{0, 1, 2, 3, 4},
+		X: xs,
 		K: ConstVal(2), // W/(m*C)
 		S: ConstVal(5), // W/m
 		// Area is the cross section area of the conduction medium
 		Area:  0.1,            // m^2
 		Left:  DirichletBC(0), // deg C
-		Right: NeumannBC(5), // W/m^2
+		Right: NeumannBC(5),   // W/m^2
 	}
 	mesh, err := NewMeshSimple1D(hc.X, degree)
 	if err != nil {
 		log.Fatal(err)
 	}
-	stiffness := mesh.StiffnessMatrix(hc)
-	fmt.Printf("stiffness:\n%v\n", mat64.Formatted(stiffness))
-	force := mesh.ForceMatrix(hc)
-	fmt.Printf("force:\n%v\n", mat64.Formatted(force))
+
+	if *printmats {
+		stiffness := mesh.StiffnessMatrix(hc)
+		fmt.Printf("stiffness:\n%v\n", mat64.Formatted(stiffness))
+		force := mesh.ForceMatrix(hc)
+		fmt.Printf("force:\n%v\n", mat64.Formatted(force))
+	}
 
 	err = mesh.Solve(hc)
 	if err != nil {
@@ -68,6 +80,6 @@ func TestHeatKernel() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("%v\t%v\n", x, y)
+		fmt.Printf("%v\t%v\n", x[0], y)
 	}
 }
