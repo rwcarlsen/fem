@@ -12,10 +12,10 @@ type Boundary struct {
 	Val  float64
 }
 
-func DirichletBC(u float64) *Boundary     { return &Boundary{Dirichlet, u} }
+func DirichletBC(u float64) *Boundary   { return &Boundary{Dirichlet, u} }
 func NeumannBC(gradU float64) *Boundary { return &Boundary{Neumann, gradU} }
 
-const DefaultPenalty = 1e8
+const DefaultPenalty = 1e9
 
 type KernelParams struct {
 	X []float64

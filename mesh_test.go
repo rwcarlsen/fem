@@ -76,9 +76,9 @@ func TestElement(t *testing.T) {
 	}
 }
 
-func TestMeshSolve(t *testing.T) {
-	tol := 1e-10
+const tol = 1e-6
 
+func TestMeshSolve(t *testing.T) {
 	tests := []struct {
 		Degree     int
 		Xs         []float64
@@ -190,7 +190,7 @@ func benchSolveN(n int) func(b *testing.B) {
 			S:     ConstVal(5),    // W/m
 			Area:  0.1,            // m^2
 			Left:  DirichletBC(0), // deg C
-			Right: NeumannBC(5), // W/m^2
+			Right: NeumannBC(5),   // W/m^2
 		}
 
 		b.ResetTimer()
@@ -218,7 +218,7 @@ func benchInterpolateN(n int) func(b *testing.B) {
 			S:     ConstVal(5),    // W/m
 			Area:  0.1,            // m^2
 			Left:  DirichletBC(0), // deg C
-			Right: NeumannBC(5), // W/m^2
+			Right: NeumannBC(5),   // W/m^2
 		}
 		mesh.Solve(hc)
 
