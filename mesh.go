@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
@@ -132,18 +133,21 @@ func (m *Mesh) Solve(k Kernel) error {
 	m.reset()
 	A := m.StiffnessMatrix(k)
 	b := m.ForceMatrix(k)
-	var x mat64.Dense
-	err := x.Solve(A, b)
-	if err != nil {
+
+	var chol mat64.Cholesky
+	if ok := chol.Factorize(A); !ok {
+		return errors.New("stiffness matrix is not positive-definite")
+	}
+
+	var u mat64.Vector
+	if err := u.SolveCholeskyVec(&chol, b); err != nil {
 		return err
 	}
 
-	r, _ := x.Dims()
-
-	for i := 0; i < r; i++ {
+	for i := 0; i < u.Len(); i++ {
 		nodes := m.indexNode[i]
 		for _, n := range nodes {
-			n.Set(x.At(i, 0), 1)
+			n.Set(u.At(i, 0), 1)
 		}
 	}
 	return nil
@@ -153,15 +157,15 @@ func (m *Mesh) Solve(k Kernel) error {
 // result of the integration terms of the weak form of the differential
 // equation in k that do *not* include/depend on u(x).  This is the f column
 // vector in the equation the K*u=f.
-func (m *Mesh) ForceMatrix(k Kernel) *mat64.Dense {
+func (m *Mesh) ForceMatrix(k Kernel) *mat64.Vector {
 	m.finalize()
 	size := len(m.indexNode)
-	mat := mat64.NewDense(size, 1, nil)
+	mat := mat64.NewVector(size, nil)
 	for e, elem := range m.Elems {
 		for i := range elem.Nodes() {
 			v := elem.IntegrateForce(k, i)
 			a := m.nodeId(e, i)
-			mat.Set(a, 0, mat.At(a, 0)+v)
+			mat.SetVec(a, mat.At(a, 0)+v)
 		}
 	}
 	return mat
@@ -171,19 +175,16 @@ func (m *Mesh) ForceMatrix(k Kernel) *mat64.Dense {
 // node test and weight functions representing the result of the integration
 // terms of the weak form of the differential equation in k that
 // include/depend on u(x).  This is the K matrix in the equation the K*u=f.
-func (m *Mesh) StiffnessMatrix(k Kernel) *mat64.Dense {
+func (m *Mesh) StiffnessMatrix(k Kernel) *mat64.SymDense {
 	m.finalize()
 	size := len(m.indexNode)
-	mat := mat64.NewDense(size, size, nil)
+	mat := mat64.NewSymDense(size, nil)
 	for e, elem := range m.Elems {
 		for i := range elem.Nodes() {
 			for j := i; j < len(elem.Nodes()); j++ {
 				v := elem.IntegrateStiffness(k, i, j)
 				a, b := m.nodeId(e, i), m.nodeId(e, j)
-				mat.Set(a, b, mat.At(a, b)+v)
-				if a != b {
-					mat.Set(b, a, mat.At(a, b))
-				}
+				mat.SetSym(a, b, mat.At(a, b)+v)
 			}
 		}
 	}
