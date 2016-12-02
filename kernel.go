@@ -35,6 +35,8 @@ type KernelParams struct {
 	// Penalty represents a penalty factor for converting essential boundary
 	// conditions to natural/traction boundary conditions.
 	Penalty float64
+	// DuDt represents the time partial derivative of U.
+	DuDt float64
 }
 
 type Kernel interface {
@@ -44,6 +46,7 @@ type Kernel interface {
 	VolInt(p *KernelParams) float64
 	BoundaryIntU(p *KernelParams) float64
 	BoundaryInt(p *KernelParams) float64
+	TimeDerivU(p *KernelParams) float64
 }
 
 type Valer interface {
@@ -75,13 +78,13 @@ func (p *LinVals) Val(x []float64) float64 {
 	return p.Y[len(p.Y)-1]
 }
 
-// SecVal only works for 1D problems.
-type SecVal struct {
+// SecVals only works for 1D problems.
+type SecVals struct {
 	X []float64
 	Y []float64
 }
 
-func (p *SecVal) Val(x []float64) float64 {
+func (p *SecVals) Val(x []float64) float64 {
 	xx := x[0]
 	for i := 0; i < len(p.X)-1; i++ {
 		x1, x2 := p.X[i], p.X[i+1]
@@ -107,9 +110,15 @@ type HeatConduction struct {
 	// S is heat source between node points.  len(S) == len(X)-1.
 	// S[i] is the thermal conductivity between X[i] and X[i+1].
 	S Valer
+	// C is the heat capacity of the material.
+	C Valer
+	// Density is the mass density of the material.
+	Density Valer
 	// Area is the cross section area of the conduction medium
-	Area  float64
-	Left  *Boundary
+	Area float64
+	// Left is the left boundary condition.
+	Left *Boundary
+	// Right is the right boundary condition.
 	Right *Boundary
 }
 
@@ -118,6 +127,10 @@ func (hc *HeatConduction) VolIntU(p *KernelParams) float64 {
 }
 func (hc *HeatConduction) VolInt(p *KernelParams) float64 {
 	return p.W * hc.S.Val(p.X)
+}
+
+func (hc *HeatConduction) TimeDerivU(p *KernelParams) float64 {
+	return p.W * hc.Density.Val(p.X) * hc.C.Val(p.X) * p.DuDt
 }
 
 func (hc *HeatConduction) BoundaryIntU(p *KernelParams) float64 {

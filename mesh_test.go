@@ -77,6 +77,83 @@ func TestElement(t *testing.T) {
 	}
 }
 
+func TestTransient(t *testing.T) {
+	tests := []struct {
+		Degree              int
+		Xs                  []float64
+		T0                  []float64
+		K, S, Density, Area float64
+		C                   []float64 // heat capacity
+		dt                  float64
+		nt                  int // number time steps
+		Left                *Boundary
+		Right               *Boundary
+		Want                [][]float64
+	}{
+		{
+			Degree:  2,
+			Xs:      []float64{0, 2, 4},
+			K:       2,
+			S:       5,
+			C:       []float64{3, 2, 2},
+			dt:      1,
+			nt:      10,
+			Density: 1,
+			Area:    0.1,
+			Left:    DirichletBC(0),
+			Right:   DirichletBC(190),
+			Want: [][]float64{
+				{0, 145, 190},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		t.Logf("test %v:", i+1)
+		mesh, err := NewMeshSimple1D(test.Xs, test.Degree)
+		if err != nil {
+			t.Errorf("    FAIL: %v", err)
+		}
+
+		hc := &HeatConduction{
+			X:       test.Xs,
+			K:       ConstVal(test.K),
+			S:       ConstVal(test.S),
+			C:       &SecVals{test.Xs, test.C},
+			Density: ConstVal(test.Density),
+			Area:    test.Area,
+			Left:    test.Left,
+			Right:   test.Right,
+		}
+		t.Logf("\n            K=%v", mat64.Formatted(mesh.StiffnessMatrix(hc, 1.0), mat64.Prefix("              ")))
+		t.Logf("\n            C=%v", mat64.Formatted(mesh.TimeDerivMatrix(hc), mat64.Prefix("              ")))
+		t.Logf("\n            f=%v", mat64.Formatted(mesh.ForceMatrix(hc, 1.0), mat64.Prefix("              ")))
+
+		time := 0.0
+		mesh.InitU(test.T0)
+		for j := 0; j < test.nt; j++ {
+			time += test.dt
+			err = mesh.SolveStep(hc, test.dt)
+			if err != nil {
+				t.Errorf("    FAIL: %v", err)
+				continue
+			}
+
+			want := test.Want[j]
+			for k, x := range test.Xs {
+				y, err := mesh.Interpolate([]float64{x})
+				if err != nil {
+					t.Errorf("    FAIL f(t=%v,x=%v)=??: %v", time, x, err)
+				} else if math.Abs(y-want[k]) > tol {
+					t.Errorf("    FAIL f(t=%v,x=%v)=%v, want %v", time, x, y, want[k])
+				} else {
+					t.Logf("         f(t=%v,x=%v)=%v", time, x, y)
+				}
+			}
+		}
+	}
+}
+
 func TestMeshSolve(t *testing.T) {
 	tests := []struct {
 		Degree     int
@@ -113,8 +190,8 @@ func TestMeshSolve(t *testing.T) {
 			Left:  test.Left,
 			Right: test.Right,
 		}
-		t.Logf("\n            k=%v", mat64.Formatted(mesh.StiffnessMatrix(hc), mat64.Prefix("              ")))
-		t.Logf("\n            f=%v", mat64.Formatted(mesh.ForceMatrix(hc), mat64.Prefix("              ")))
+		t.Logf("\n            k=%v", mat64.Formatted(mesh.StiffnessMatrix(hc, DefaultPenalty), mat64.Prefix("              ")))
+		t.Logf("\n            f=%v", mat64.Formatted(mesh.ForceMatrix(hc, DefaultPenalty), mat64.Prefix("              ")))
 
 		err = mesh.Solve(hc)
 		if err != nil {

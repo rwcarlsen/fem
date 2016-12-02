@@ -114,14 +114,64 @@ func (m *Mesh) Interpolate(x []float64) (float64, error) {
 	return Interpolate(elem, x)
 }
 
-// reset renormalizes all the node shape functions in the mesh to one - i.e.
+// Reset renormalizes all the node shape functions in the mesh to one - i.e.
 // resets and throws away any previously computed approximations via Solve.
-func (m *Mesh) reset() {
+func (m *Mesh) Reset() {
 	for _, e := range m.Elems {
 		for _, n := range e.Nodes() {
 			n.Set(1, 1)
 		}
 	}
+}
+
+func (m *Mesh) InitU(u []float64) {
+	for i := 0; i < len(u); i++ {
+		nodes := m.indexNode[i]
+		for _, n := range nodes {
+			n.Set(u[i], 1)
+		}
+	}
+}
+
+func (m *Mesh) Uvec() []float64 {
+	vals := map[int]float64{}
+	for _, elem := range m.Elems {
+		for _, n := range elem.Nodes() {
+			vals[m.nodeIndex[n]] = n.Sample(n.X())
+		}
+	}
+	vec := make([]float64, len(vals))
+	for i, val := range vals {
+		vec[i] = val
+	}
+	return vec
+}
+
+// SolveStep computes the solution of the system at time t_curr + dt
+// explicitly using the current system solution.
+func (m *Mesh) SolveStep(k Kernel, dt float64) error {
+	A := m.StiffnessMatrix(k, 1.0)
+	r, _ := A.Dims()
+	f := m.ForceMatrix(k, 1.0)
+	u := mat64.NewDense(r, 1, m.Uvec())
+	var b mat64.Dense
+	b.Mul(A, u)
+	b.Sub(f, &b)
+
+	C := m.TimeDerivMatrix(k)
+	fmt.Printf("\n            C=%v\n", mat64.Formatted(C, mat64.Prefix("              ")))
+	fmt.Printf("\n            b=%v\n", mat64.Formatted(&b, mat64.Prefix("              ")))
+	var chol mat64.Cholesky
+	if ok := chol.Factorize(C); !ok {
+		return errors.New("time-deriv matrix is not positive-definite")
+	}
+
+	if err := u.SolveCholesky(&chol, &b); err != nil {
+		return err
+	}
+
+	m.InitU(u.RawMatrix().Data)
+	return nil
 }
 
 // Solve computes the finite element approximation for the the differential
@@ -130,9 +180,9 @@ func (m *Mesh) reset() {
 // overwritten.  This solves the system K*u=f for u where K is the stiffness matrix
 // and f is the force matrix.
 func (m *Mesh) Solve(k Kernel) error {
-	m.reset()
-	A := m.StiffnessMatrix(k)
-	b := m.ForceMatrix(k)
+	m.Reset()
+	A := m.StiffnessMatrix(k, DefaultPenalty)
+	b := m.ForceMatrix(k, DefaultPenalty)
 
 	var chol mat64.Cholesky
 	if ok := chol.Factorize(A); !ok {
@@ -157,13 +207,13 @@ func (m *Mesh) Solve(k Kernel) error {
 // result of the integration terms of the weak form of the differential
 // equation in k that do *not* include/depend on u(x).  This is the f column
 // vector in the equation the K*u=f.
-func (m *Mesh) ForceMatrix(k Kernel) *mat64.Vector {
+func (m *Mesh) ForceMatrix(k Kernel, penalty float64) *mat64.Vector {
 	m.finalize()
 	size := len(m.indexNode)
 	mat := mat64.NewVector(size, nil)
 	for e, elem := range m.Elems {
 		for i := range elem.Nodes() {
-			v := elem.IntegrateForce(k, i)
+			v := elem.IntegrateForce(k, penalty, i)
 			a := m.nodeId(e, i)
 			mat.SetVec(a, mat.At(a, 0)+v)
 		}
@@ -175,14 +225,35 @@ func (m *Mesh) ForceMatrix(k Kernel) *mat64.Vector {
 // node test and weight functions representing the result of the integration
 // terms of the weak form of the differential equation in k that
 // include/depend on u(x).  This is the K matrix in the equation the K*u=f.
-func (m *Mesh) StiffnessMatrix(k Kernel) *mat64.SymDense {
+func (m *Mesh) StiffnessMatrix(k Kernel, penalty float64) *mat64.SymDense {
 	m.finalize()
 	size := len(m.indexNode)
 	mat := mat64.NewSymDense(size, nil)
 	for e, elem := range m.Elems {
 		for i := range elem.Nodes() {
 			for j := i; j < len(elem.Nodes()); j++ {
-				v := elem.IntegrateStiffness(k, i, j)
+				v := elem.IntegrateStiffness(k, penalty, i, j)
+				a, b := m.nodeId(e, i), m.nodeId(e, j)
+				mat.SetSym(a, b, mat.At(a, b)+v)
+			}
+		}
+	}
+	return mat
+}
+
+// TimeDerivMatrix builds the matrix with one entry for each combination of
+// node test and weight functions representing the result of the integration
+// terms of the weak form of the differential equation that
+// include/depend on du/dt.  This is the C matrix in the equation the
+// transient system Cu̇+K*u=f.
+func (m *Mesh) TimeDerivMatrix(k Kernel) *mat64.SymDense {
+	m.finalize()
+	size := len(m.indexNode)
+	mat := mat64.NewSymDense(size, nil)
+	for e, elem := range m.Elems {
+		for i := range elem.Nodes() {
+			for j := i; j < len(elem.Nodes()); j++ {
+				v := elem.IntegrateTime(k, i, j)
 				a, b := m.nodeId(e, i), m.nodeId(e, j)
 				mat.SetSym(a, b, mat.At(a, b)+v)
 			}
@@ -299,10 +370,14 @@ type Element interface {
 	// IntegrateStiffness returns the result of the integration terms of the
 	// weak form of the differential equation that include/depend on u(x) (the
 	// solution or dependent variable).
-	IntegrateStiffness(k Kernel, wNode, uNode int) float64
+	IntegrateStiffness(k Kernel, penalty float64, wNode, uNode int) float64
 	// IntegrateForce returns the result of the integration terms of the weak
 	// form of the differential equation that do *not* include/depend on u(x).
-	IntegrateForce(k Kernel, wNode int) float64
+	IntegrateForce(k Kernel, penalty float64, wNode int) float64
+	// IntegrateTime returns the result of the integrations terms of the weak
+	// form of the differential equation that include/depend on du/dt (the
+	// time derivative of the dependent variable).
+	IntegrateTime(k Kernel, wNode, uNode int) float64
 	// Bounds returns a hyper-cubic bounding box defined by low and up values
 	// in each dimension.
 	Bounds() (low, up []float64)
@@ -367,39 +442,50 @@ func Deriv(e Element, x []float64, dim int) (float64, error) {
 	return u, nil
 }
 
-func (e *Element1D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
+func (e *Element1D) IntegrateStiffness(k Kernel, penalty float64, wNode, uNode int) float64 {
 	w, u := e.nodes[wNode], e.nodes[uNode]
 
 	fn := func(x float64) float64 {
 		xs := []float64{x}
-		pars := &KernelParams{X: xs, U: u.Sample(xs), GradU: u.DerivSample(xs, 0), W: w.Weight(xs), GradW: w.DerivWeight(xs, 0), Penalty: DefaultPenalty}
+		pars := &KernelParams{X: xs, U: u.Sample(xs), GradU: u.DerivSample(xs, 0), W: w.Weight(xs), GradW: w.DerivWeight(xs, 0), Penalty: penalty}
 		return k.VolIntU(pars)
 	}
 	volU := quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
 
 	x1 := []float64{e.left()}
 	x2 := []float64{e.right()}
-	pars1 := &KernelParams{X: x1, U: u.Sample(x1), GradU: u.DerivSample(x1, 0), W: w.Weight(x1), GradW: w.DerivWeight(x1, 0), Penalty: DefaultPenalty}
-	pars2 := &KernelParams{X: x2, U: u.Sample(x2), GradU: u.DerivSample(x2, 0), W: w.Weight(x2), GradW: w.DerivWeight(x2, 0), Penalty: DefaultPenalty}
+	pars1 := &KernelParams{X: x1, U: u.Sample(x1), GradU: u.DerivSample(x1, 0), W: w.Weight(x1), GradW: w.DerivWeight(x1, 0), Penalty: penalty}
+	pars2 := &KernelParams{X: x2, U: u.Sample(x2), GradU: u.DerivSample(x2, 0), W: w.Weight(x2), GradW: w.DerivWeight(x2, 0), Penalty: penalty}
 	boundU1 := k.BoundaryIntU(pars1)
 	boundU2 := k.BoundaryIntU(pars2)
 	return volU + boundU1 + boundU2
 }
 
-func (e *Element1D) IntegrateForce(k Kernel, wNode int) float64 {
+func (e *Element1D) IntegrateTime(k Kernel, wNode, uNode int) float64 {
+	w, u := e.nodes[wNode], e.nodes[uNode]
+
+	fn := func(x float64) float64 {
+		xs := []float64{x}
+		pars := &KernelParams{X: xs, U: u.Sample(xs), GradU: u.DerivSample(xs, 0), W: w.Weight(xs), GradW: w.DerivWeight(xs, 0), DuDt: 1, Penalty: 1.0}
+		return k.TimeDerivU(pars)
+	}
+	return quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
+}
+
+func (e *Element1D) IntegrateForce(k Kernel, penalty float64, wNode int) float64 {
 	w := e.nodes[wNode]
 
 	fn := func(x float64) float64 {
 		xvec := []float64{x}
-		pars := &KernelParams{X: xvec, U: 0, GradU: 0, W: w.Weight(xvec), GradW: w.DerivWeight(xvec, 0), Penalty: DefaultPenalty}
+		pars := &KernelParams{X: xvec, U: 0, GradU: 0, W: w.Weight(xvec), GradW: w.DerivWeight(xvec, 0), Penalty: penalty}
 		return k.VolInt(pars)
 	}
 	vol := quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
 
 	x1 := []float64{e.left()}
 	x2 := []float64{e.right()}
-	pars1 := &KernelParams{X: x1, U: 0, GradU: 0, W: w.Weight(x1), GradW: w.DerivWeight(x1, 0), Penalty: DefaultPenalty}
-	pars2 := &KernelParams{X: x2, U: 0, GradU: 0, W: w.Weight(x2), GradW: w.DerivWeight(x2, 0), Penalty: DefaultPenalty}
+	pars1 := &KernelParams{X: x1, U: 0, GradU: 0, W: w.Weight(x1), GradW: w.DerivWeight(x1, 0), Penalty: penalty}
+	pars2 := &KernelParams{X: x2, U: 0, GradU: 0, W: w.Weight(x2), GradW: w.DerivWeight(x2, 0), Penalty: penalty}
 	bound1 := k.BoundaryInt(pars1)
 	bound2 := k.BoundaryInt(pars2)
 

@@ -14,28 +14,6 @@ var nnodes = flag.Int("nodes", 5, "number of nodes/domain divisions-1")
 func main() {
 	flag.Parse()
 	TestHeatKernel()
-	//xs := []float64{0, 1, 2, 3}
-
-	////n := 100
-	////elem := NewElementSimple1D(xs)
-	////elem.PrintShapeFuncs(os.Stdout, n)
-	////elem.PrintFunc(os.Stdout, n)
-
-	//xs = []float64{0, 1, 2, 3, 4, 5, 6}
-	//mesh, err := NewMeshSimple1D(xs, 3)
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-
-	//for i, elem := range mesh.Elems {
-	//	fmt.Printf("elem %v\n", i)
-	//	for _, n := range elem.Nodes {
-	//		fmt.Printf("    node %p at x=%v\n", n, n.X())
-	//	}
-	//}
-
-	//PrintStiffness(xs, []float64{7, 8, 9, 11, 13, 19}, 3)
-	//PrintStiffness([]float64{0, 1, 2}, []float64{7, 8}, 2)
 }
 
 func TestHeatKernel() {
@@ -59,9 +37,9 @@ func TestHeatKernel() {
 	}
 
 	if *printmats {
-		stiffness := mesh.StiffnessMatrix(hc)
+		stiffness := mesh.StiffnessMatrix(hc, DefaultPenalty)
 		fmt.Printf("stiffness:\n%v\n", mat64.Formatted(stiffness))
-		force := mesh.ForceMatrix(hc)
+		force := mesh.ForceMatrix(hc, DefaultPenalty)
 		fmt.Printf("force:\n%v\n", mat64.Formatted(force))
 	}
 
