@@ -83,7 +83,7 @@ func TestTransient(t *testing.T) {
 		Xs                  []float64
 		T0                  []float64
 		K, S, Density, Area float64
-		C                   []float64 // heat capacity
+		C                   float64 // heat capacity
 		dt                  float64
 		nt                  int // number time steps
 		Left                *Boundary
@@ -93,16 +93,23 @@ func TestTransient(t *testing.T) {
 		{
 			Degree:  2,
 			Xs:      []float64{0, 2, 4},
+			T0:      []float64{10, 100, 150},
 			K:       2,
 			S:       5,
-			C:       []float64{3, 2, 2},
-			dt:      1,
-			nt:      10,
+			C:       1,
+			dt:      .001,
 			Density: 1,
 			Area:    0.1,
 			Left:    DirichletBC(0),
 			Right:   DirichletBC(190),
 			Want: [][]float64{
+				{0, 145, 190},
+				{0, 145, 190},
+				{0, 145, 190},
+				{0, 145, 190},
+				{0, 145, 190},
+				{0, 145, 190},
+				{0, 145, 190},
 				{0, 145, 190},
 			},
 		},
@@ -119,7 +126,7 @@ func TestTransient(t *testing.T) {
 			X:       test.Xs,
 			K:       ConstVal(test.K),
 			S:       ConstVal(test.S),
-			C:       &SecVals{test.Xs, test.C},
+			C:       ConstVal(test.C),
 			Density: ConstVal(test.Density),
 			Area:    test.Area,
 			Left:    test.Left,
@@ -131,7 +138,8 @@ func TestTransient(t *testing.T) {
 
 		time := 0.0
 		mesh.InitU(test.T0)
-		for j := 0; j < test.nt; j++ {
+		ntimes := len(test.Want)
+		for j := 0; j < ntimes; j++ {
 			time += test.dt
 			err = mesh.SolveStep(hc, test.dt)
 			if err != nil {

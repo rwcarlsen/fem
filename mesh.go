@@ -166,8 +166,13 @@ func (m *Mesh) SolveStep(k Kernel, dt float64) error {
 		return errors.New("time-deriv matrix is not positive-definite")
 	}
 
-	if err := u.SolveCholesky(&chol, &b); err != nil {
+	// TODO: somehow need to enforce du/dt to be zero on essential boundary
+	var dudt mat64.Dense
+	if err := dudt.SolveCholesky(&chol, &b); err != nil {
 		return err
+	}
+	for i := 0; i < r; i++ {
+		u.Set(i, 0, dudt.At(i, 0)*dt+u.At(i, 0))
 	}
 
 	m.InitU(u.RawMatrix().Data)
@@ -333,7 +338,16 @@ func (n *LagrangeNode) Sample(x []float64) float64 {
 	return u
 }
 
-func (n *LagrangeNode) Weight(x []float64) float64 { return n.Sample(x) / n.U * n.W }
+func (n *LagrangeNode) Weight(x []float64) float64 {
+	xx, w := x[0], n.W
+	for i, x0 := range n.Xvals {
+		if i == n.Index {
+			continue
+		}
+		w *= (xx - x0) / (n.X()[0] - x0)
+	}
+	return w
+}
 
 func (n *LagrangeNode) DerivSample(x []float64, dim int) float64 {
 	xx, u := x[0], n.U
@@ -464,9 +478,16 @@ func (e *Element1D) IntegrateStiffness(k Kernel, penalty float64, wNode, uNode i
 func (e *Element1D) IntegrateTime(k Kernel, wNode, uNode int) float64 {
 	w, u := e.nodes[wNode], e.nodes[uNode]
 
+	// this is used as a hack to renormalize the uNode Set value to 1.0 so we
+	// can use it as a shape function for the time derivative.
+	uMag := u.Sample(u.X())
+	if uMag == 0 {
+		uMag = 1.0
+	}
+
 	fn := func(x float64) float64 {
 		xs := []float64{x}
-		pars := &KernelParams{X: xs, U: u.Sample(xs), GradU: u.DerivSample(xs, 0), W: w.Weight(xs), GradW: w.DerivWeight(xs, 0), DuDt: 1, Penalty: 1.0}
+		pars := &KernelParams{X: xs, U: u.Sample(xs) / uMag, W: w.Weight(xs), DuDt: 1}
 		return k.TimeDerivU(pars)
 	}
 	return quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
