@@ -481,13 +481,13 @@ func (e *Element1D) IntegrateTime(k Kernel, wNode, uNode int) float64 {
 	// this is used as a hack to renormalize the uNode Set value to 1.0 so we
 	// can use it as a shape function for the time derivative.
 	uMag := u.Sample(u.X())
-	if uMag == 0 {
-		uMag = 1.0
-	}
+	uMagWeight := u.Weight(u.X())
+	u.Set(1, 1)
+	defer func() { u.Set(uMag, uMagWeight) }()
 
 	fn := func(x float64) float64 {
 		xs := []float64{x}
-		pars := &KernelParams{X: xs, U: u.Sample(xs) / uMag, W: w.Weight(xs), DuDt: 1}
+		pars := &KernelParams{X: xs, W: w.Weight(xs), DuDt: u.Sample(xs)}
 		return k.TimeDerivU(pars)
 	}
 	return quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)

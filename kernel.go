@@ -130,7 +130,10 @@ func (hc *HeatConduction) VolInt(p *KernelParams) float64 {
 }
 
 func (hc *HeatConduction) TimeDerivU(p *KernelParams) float64 {
-	return p.W * hc.Density.Val(p.X) * hc.C.Val(p.X) * p.U * p.DuDt
+	if p.X[0] == hc.X[0] || p.X[0] == hc.X[len(hc.X)-1] {
+		return p.W * hc.Density.Val(p.X) * hc.C.Val(p.X) * p.DuDt * p.Penalty
+	}
+	return p.W * hc.Density.Val(p.X) * hc.C.Val(p.X) * p.DuDt
 }
 
 func (hc *HeatConduction) BoundaryIntU(p *KernelParams) float64 {
