@@ -1,7 +1,5 @@
 package main
 
-import "math"
-
 // Node represents a node and its interpolant within a finite element.
 type Node interface {
 	// X returns the global/absolute position of the node.
@@ -21,7 +19,7 @@ type Node interface {
 	Set(sample, weight float64)
 }
 
-// LagrangeNode1D represents a finite element node.  It holds a polynomial shape
+// LagrangeNode represents a finite element node.  It holds a polynomial shape
 // function that can be sampled.  It represents a shape function of the
 // following form:
 //
@@ -29,7 +27,7 @@ type Node interface {
 //    --------- * --------- * ---------  * ...
 //    (x1 - x2)   (x1 - x3)   (x1 - x4)
 //
-type LagrangeNode1D struct {
+type LagrangeNode struct {
 	// Index identifies the interpolation point in Xvals where the node's
 	// shape function is equal to U or W for the solution and weight
 	// respectively.
@@ -49,8 +47,8 @@ type LagrangeNode1D struct {
 // backed node with U and W set to 1.0.  xs represents the interpolation
 // points and xIndex identifies the point in xs where the polynomial is equal
 // to U/W instead of zero.
-func NewLagrangeNode(xIndex int, xs []float64) *LagrangeNode1D {
-	return &LagrangeNode1D{
+func NewLagrangeNode(xIndex int, xs []float64) *LagrangeNode {
+	return &LagrangeNode{
 		Index: xIndex,
 		Xvals: append([]float64{}, xs...),
 		U:     1,
@@ -58,11 +56,11 @@ func NewLagrangeNode(xIndex int, xs []float64) *LagrangeNode1D {
 	}
 }
 
-func (n *LagrangeNode1D) X() []float64 { return []float64{n.Xvals[n.Index]} }
+func (n *LagrangeNode) X() []float64 { return []float64{n.Xvals[n.Index]} }
 
-func (n *LagrangeNode1D) Set(sample, weight float64) { n.U, n.W = sample, weight }
+func (n *LagrangeNode) Set(sample, weight float64) { n.U, n.W = sample, weight }
 
-func (n *LagrangeNode1D) Sample(x []float64) float64 {
+func (n *LagrangeNode) Sample(x []float64) float64 {
 	xx, u := x[0], n.U
 	for i, x0 := range n.Xvals {
 		if i == n.Index {
@@ -73,9 +71,9 @@ func (n *LagrangeNode1D) Sample(x []float64) float64 {
 	return u
 }
 
-func (n *LagrangeNode1D) Weight(x []float64) float64 { return n.Sample(x) / n.U * n.W }
+func (n *LagrangeNode) Weight(x []float64) float64 { return n.Sample(x) / n.U * n.W }
 
-func (n *LagrangeNode1D) DerivSample(x []float64, dim int) float64 {
+func (n *LagrangeNode) DerivSample(x []float64, dim int) float64 {
 	xx, u := x[0], n.U
 	dudx := 0.0
 	for i, x0 := range n.Xvals {
@@ -88,7 +86,7 @@ func (n *LagrangeNode1D) DerivSample(x []float64, dim int) float64 {
 	return dudx
 }
 
-func (n *LagrangeNode1D) DerivWeight(x []float64, dim int) float64 {
+func (n *LagrangeNode) DerivWeight(x []float64, dim int) float64 {
 	xx, u := x[0], n.U
 	dudx := 0.0
 	for i, x0 := range n.Xvals {
@@ -101,26 +99,34 @@ func (n *LagrangeNode1D) DerivWeight(x []float64, dim int) float64 {
 	return dudx
 }
 
-type BilinearNode2D struct {
+type BilinearNode struct {
 	X1, Y1 float64
 	X2, Y2 float64
 	U, W   float64
 }
 
-func (n *BilinearNode2D) X() []float64 { return []float64{n.X1, n.Y1} }
+// NewBilinearNode creates a new 2D rectangular node with bilinear
+// interpolation with U and W initialized to 1.0. The point x1,y1 is the
+// "primary" point where the node takes on its value U.  The node evaluates to
+// zero at all other corner points (x1,y2; x2,y1; x2,y2).
+func NewBilinearNode(x1, y1, x2, y2 float64) *BilinearNode {
+	return &BilinearNode{x1, y1, x2, y2, 1.0, 1.0}
+}
 
-func (n *BilinearNode2D) Set(sample, weight float64) { n.U, n.W = sample, weight }
+func (n *BilinearNode) X() []float64 { return []float64{n.X1, n.Y1} }
 
-func (n *BilinearNode2D) Sample(x []float64) float64 {
+func (n *BilinearNode) Set(sample, weight float64) { n.U, n.W = sample, weight }
+
+func (n *BilinearNode) Sample(x []float64) float64 {
 	xx, yy, u := x[0], x[1], n.U
-	u *= (xx - n.X2) / math.Abs(n.X1-n.X2)
-	u *= (yy - n.Y2) / math.Abs(n.Y1-n.Y2)
+	u *= (xx - n.X2) / (n.X1 - n.X2)
+	u *= (yy - n.Y2) / (n.Y1 - n.Y2)
 	return u
 }
 
-func (n *BilinearNode2D) Weight(x []float64) float64 { return n.Sample(x) / n.U * n.W }
+func (n *BilinearNode) Weight(x []float64) float64 { return n.Sample(x) / n.U * n.W }
 
-func (n *BilinearNode2D) DerivSample(x []float64, dim int) float64 {
+func (n *BilinearNode) DerivSample(x []float64, dim int) float64 {
 	if dim == 0 {
 		return n.U / (n.X1 - n.X2)
 	} else {
@@ -128,7 +134,7 @@ func (n *BilinearNode2D) DerivSample(x []float64, dim int) float64 {
 	}
 }
 
-func (n *BilinearNode2D) DerivWeight(x []float64, dim int) float64 {
+func (n *BilinearNode) DerivWeight(x []float64, dim int) float64 {
 	if dim == 0 {
 		return n.W / (n.X1 - n.X2)
 	} else {
