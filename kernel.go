@@ -1,15 +1,62 @@
 package main
 
+import "math"
+
 type BoundaryType int
 
 const (
 	Dirichlet BoundaryType = iota
 	Neumann
+	BoundaryNone
 )
 
-type Boundary struct {
-	Type BoundaryType
-	Val  float64
+type Boundary interface {
+	Type(x []float64) BoundaryType
+	Val(x []float64) float64
+}
+
+type Boundary1D struct {
+	Left      float64
+	LeftVal   float64
+	LeftType  BoundaryType
+	Right     float64
+	RightVal  float64
+	RightType BoundaryType
+}
+
+func (b *Boundary1D) Type(x []float64) BoundaryType {
+	if x[0] == b.Left {
+		return b.LeftType
+	} else if x[0] == b.Right {
+		return b.RightType
+	}
+	return BoundaryNone
+}
+
+func (b *Boundary1D) Val(x []float64) float64 {
+	if x[0] == b.Left {
+		return b.LeftVal
+	} else if x[0] == b.Right {
+		if b.RightType == Neumann {
+			// negative on rightval is for polarity of boundary integral
+			return -b.RightVal
+		}
+		return b.RightVal
+	}
+	return 0
+}
+
+func PosEqual(a, b []float64, tol float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if math.Abs(a[i]-b[i]) > tol {
+			return false
+		}
+	}
+	return true
 }
 
 // Dot performs a vector*vector dot product.
@@ -23,9 +70,6 @@ func Dot(a, b []float64) float64 {
 	}
 	return v
 }
-
-func DirichletBC(u float64) *Boundary   { return &Boundary{Dirichlet, u} }
-func NeumannBC(gradU float64) *Boundary { return &Boundary{Neumann, gradU} }
 
 type KernelParams struct {
 	// X is the position the kernel is being evaluated at.
@@ -113,18 +157,13 @@ type HeatConduction struct {
 	// K is thermal conductivity (W/m/K).
 	K Valer
 	// S is heat source strength (W/m^3).
-	S     Valer
-	Left  *Boundary
-	Right *Boundary
+	S Valer
+	// Boundary holds the non-dirichlet boundary conditions for the problem.
+	Boundary Boundary
 }
 
 func (hc *HeatConduction) IsDirichlet(x []float64) (bool, float64) {
-	if x[0] == hc.X[0] && hc.Left.Type == Dirichlet {
-		return true, hc.Left.Val
-	} else if x[0] == hc.X[len(hc.X)-1] && hc.Right.Type == Dirichlet {
-		return true, hc.Right.Val
-	}
-	return false, 0
+	return hc.Boundary.Type(x) == Dirichlet, hc.Boundary.Val(x)
 }
 
 func (hc *HeatConduction) VolIntU(p *KernelParams) float64 {
@@ -138,10 +177,5 @@ func (hc *HeatConduction) VolInt(p *KernelParams) float64 {
 func (hc *HeatConduction) BoundaryIntU(p *KernelParams) float64 { return 0 }
 
 func (hc *HeatConduction) BoundaryInt(p *KernelParams) float64 {
-	if p.X[0] == hc.X[0] {
-		return p.W * hc.Left.Val
-	} else if p.X[0] == hc.X[len(hc.X)-1] {
-		return -1 * p.W * hc.Right.Val
-	}
-	return 0
+	return p.W * hc.Boundary.Val(p.X)
 }

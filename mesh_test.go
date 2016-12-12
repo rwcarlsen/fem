@@ -11,29 +11,35 @@ const tol = 1e-6
 
 func TestMeshSolve(t *testing.T) {
 	tests := []struct {
-		Degree int
-		Xs     []float64
-		K, S   float64
-		Left   *Boundary
-		Right  *Boundary
-		Want   []float64
+		Degree   int
+		Xs       []float64
+		K, S     float64
+		Left     BoundaryType
+		LeftVal  float64
+		Right    BoundaryType
+		RightVal float64
+		Want     []float64
 	}{
 		{
-			Degree: 2,
-			Xs:     []float64{0, 2, 4},
-			K:      2,
-			S:      50,
-			Left:   DirichletBC(0),
-			Right:  NeumannBC(5),
-			Want:   []float64{0, 145, 190},
+			Degree:   2,
+			Xs:       []float64{0, 2, 4},
+			K:        2,
+			S:        50,
+			Left:     Dirichlet,
+			LeftVal:  0,
+			Right:    Neumann,
+			RightVal: 5,
+			Want:     []float64{0, 145, 190},
 		}, {
-			Degree: 3,
-			Xs:     []float64{0, 1, 2, 3, 4},
-			K:      2,
-			S:      50,
-			Left:   DirichletBC(0),
-			Right:  NeumannBC(5),
-			Want:   []float64{0, 85, 145, 180, 190},
+			Degree:   3,
+			Xs:       []float64{0, 1, 2, 3, 4},
+			K:        2,
+			S:        50,
+			Left:     Dirichlet,
+			LeftVal:  0,
+			Right:    Neumann,
+			RightVal: 5,
+			Want:     []float64{0, 85, 145, 180, 190},
 		},
 	}
 
@@ -45,11 +51,17 @@ func TestMeshSolve(t *testing.T) {
 		}
 
 		hc := &HeatConduction{
-			X:     test.Xs,
-			K:     ConstVal(test.K),
-			S:     ConstVal(test.S),
-			Left:  test.Left,
-			Right: test.Right,
+			X: test.Xs,
+			K: ConstVal(test.K),
+			S: ConstVal(test.S),
+			Boundary: &Boundary1D{
+				Left:      test.Xs[0],
+				LeftVal:   test.LeftVal,
+				LeftType:  test.Left,
+				Right:     test.Xs[len(test.Xs)-1],
+				RightVal:  test.RightVal,
+				RightType: test.Right,
+			},
 		}
 		t.Logf("\n            k=%v", mat64.Formatted(mesh.StiffnessMatrix(hc), mat64.Prefix("              ")))
 		t.Logf("\n            f=%v", mat64.Formatted(mesh.ForceMatrix(hc), mat64.Prefix("              ")))
