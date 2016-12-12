@@ -12,10 +12,23 @@ type Boundary struct {
 	Val  float64
 }
 
+// Dot performs a vector*vector dot product.
+func Dot(a, b []float64) float64 {
+	if len(a) != len(b) {
+		panic("inconsistent lengths for dot product")
+	}
+	v := 0.0
+	for i := range a {
+		v += a[i] * b[i]
+	}
+	return v
+}
+
 func DirichletBC(u float64) *Boundary   { return &Boundary{Dirichlet, u} }
 func NeumannBC(gradU float64) *Boundary { return &Boundary{Neumann, gradU} }
 
 type KernelParams struct {
+	// X is the position the kernel is being evaluated at.
 	X []float64
 	// U is value of the solution shape function if solving a linear system
 	// and it is the current guess for the solution (i.e. shape function val
@@ -24,12 +37,12 @@ type KernelParams struct {
 	// systems, an Newton or similar will be used to iterate toward better U
 	// guesses.
 	U float64
-	// GradU holds the derivative of the solution shape function.
-	GradU float64
+	// GradU holds the (partial) derivatives of the solution shape function.
+	GradU []float64
 	// W holds the value of the weight/test function
 	W float64
-	// GradW holds the derivative of the weight/test function
-	GradW float64
+	// GradW holds the (partial) derivatives of the weight/test function
+	GradW []float64
 }
 
 type Kernel interface {
@@ -110,8 +123,9 @@ type HeatConduction struct {
 }
 
 func (hc *HeatConduction) VolIntU(p *KernelParams) float64 {
-	return p.GradW * hc.K.Val(p.X) * hc.Area * p.GradU
+	return Dot(p.GradW, p.GradU) * hc.K.Val(p.X) * hc.Area
 }
+
 func (hc *HeatConduction) VolInt(p *KernelParams) float64 {
 	return p.W * hc.S.Val(p.X)
 }
