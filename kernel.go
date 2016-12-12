@@ -110,42 +110,12 @@ func (p *SecVal) Val(x []float64) float64 {
 type HeatConduction struct {
 	// X is the node/mesh points.
 	X []float64
-	// K is thermal conductivity between node points.  len(K) == len(X)-1.
-	// K[i] is the thermal conductivity between X[i] and X[i+1].
+	// K is thermal conductivity (W/m/K).
 	K Valer
-	// S is heat source between node points.  len(S) == len(X)-1.
-	// S[i] is the thermal conductivity between X[i] and X[i+1].
-	S Valer
-	// Area is the cross section area of the conduction medium
-	Area  float64
+	// S is heat source strength (W/m^3).
+	S     Valer
 	Left  *Boundary
 	Right *Boundary
-}
-
-func (hc *HeatConduction) VolIntU(p *KernelParams) float64 {
-	return Dot(p.GradW, p.GradU) * hc.K.Val(p.X) * hc.Area
-}
-
-func (hc *HeatConduction) VolInt(p *KernelParams) float64 {
-	return p.W * hc.S.Val(p.X)
-}
-
-func (hc *HeatConduction) BoundaryIntU(p *KernelParams) float64 {
-	if p.X[0] != hc.X[0] && p.X[0] != hc.X[len(hc.X)-1] {
-		return 0
-	}
-
-	if p.X[0] == hc.X[0] {
-		if hc.Left.Type == Neumann {
-			return 0
-		}
-		return p.W * hc.Area * p.U
-	} else {
-		if hc.Right.Type == Neumann {
-			return 0
-		}
-		return p.W * hc.Area * p.U
-	}
 }
 
 func (hc *HeatConduction) IsDirichlet(x []float64) (bool, float64) {
@@ -157,20 +127,21 @@ func (hc *HeatConduction) IsDirichlet(x []float64) (bool, float64) {
 	return false, 0
 }
 
-func (hc *HeatConduction) BoundaryInt(p *KernelParams) float64 {
-	if p.X[0] != hc.X[0] && p.X[0] != hc.X[len(hc.X)-1] {
-		return 0
-	}
+func (hc *HeatConduction) VolIntU(p *KernelParams) float64 {
+	return Dot(p.GradW, p.GradU) * hc.K.Val(p.X)
+}
 
+func (hc *HeatConduction) VolInt(p *KernelParams) float64 {
+	return p.W * hc.S.Val(p.X)
+}
+
+func (hc *HeatConduction) BoundaryIntU(p *KernelParams) float64 { return 0 }
+
+func (hc *HeatConduction) BoundaryInt(p *KernelParams) float64 {
 	if p.X[0] == hc.X[0] {
-		if hc.Left.Type == Dirichlet {
-			return p.W * hc.Area * hc.Left.Val
-		}
-		return p.W * hc.Area * hc.Left.Val
-	} else {
-		if hc.Right.Type == Dirichlet {
-			return p.W * hc.Area * hc.Right.Val
-		}
-		return -1 * p.W * hc.Area * hc.Right.Val
+		return p.W * hc.Left.Val
+	} else if p.X[0] == hc.X[len(hc.X)-1] {
+		return -1 * p.W * hc.Right.Val
 	}
+	return 0
 }

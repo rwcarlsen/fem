@@ -57,8 +57,7 @@ func benchSolveN(n int) func(b *testing.B) {
 		hc := &HeatConduction{
 			X:     xs,
 			K:     ConstVal(2),    // W/(m*C)
-			S:     ConstVal(5),    // W/m
-			Area:  0.1,            // m^2
+			S:     ConstVal(50),   // W/m^3
 			Left:  DirichletBC(0), // deg C
 			Right: NeumannBC(5),   // W/m^2
 		}
@@ -85,8 +84,7 @@ func benchInterpolateN(n int) func(b *testing.B) {
 		hc := &HeatConduction{
 			X:     xs,
 			K:     ConstVal(2),    // W/(m*C)
-			S:     ConstVal(5),    // W/m
-			Area:  0.1,            // m^2
+			S:     ConstVal(50),   // W/m^3
 			Left:  DirichletBC(0), // deg C
 			Right: NeumannBC(5),   // W/m^2
 		}

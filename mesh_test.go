@@ -11,19 +11,18 @@ const tol = 1e-6
 
 func TestMeshSolve(t *testing.T) {
 	tests := []struct {
-		Degree     int
-		Xs         []float64
-		K, S, Area float64
-		Left       *Boundary
-		Right      *Boundary
-		Want       []float64
+		Degree int
+		Xs     []float64
+		K, S   float64
+		Left   *Boundary
+		Right  *Boundary
+		Want   []float64
 	}{
 		{
 			Degree: 2,
 			Xs:     []float64{0, 2, 4},
 			K:      2,
-			S:      5,
-			Area:   0.1,
+			S:      50,
 			Left:   DirichletBC(0),
 			Right:  NeumannBC(5),
 			Want:   []float64{0, 145, 190},
@@ -31,8 +30,7 @@ func TestMeshSolve(t *testing.T) {
 			Degree: 3,
 			Xs:     []float64{0, 1, 2, 3, 4},
 			K:      2,
-			S:      5,
-			Area:   0.1,
+			S:      50,
 			Left:   DirichletBC(0),
 			Right:  NeumannBC(5),
 			Want:   []float64{0, 85, 145, 180, 190},
@@ -50,7 +48,6 @@ func TestMeshSolve(t *testing.T) {
 			X:     test.Xs,
 			K:     ConstVal(test.K),
 			S:     ConstVal(test.S),
-			Area:  test.Area,
 			Left:  test.Left,
 			Right: test.Right,
 		}

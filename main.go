@@ -14,28 +14,6 @@ var nnodes = flag.Int("nodes", 5, "number of nodes/domain divisions-1")
 func main() {
 	flag.Parse()
 	TestHeatKernel()
-	//xs := []float64{0, 1, 2, 3}
-
-	////n := 100
-	////elem := NewElementSimple1D(xs)
-	////elem.PrintShapeFuncs(os.Stdout, n)
-	////elem.PrintFunc(os.Stdout, n)
-
-	//xs = []float64{0, 1, 2, 3, 4, 5, 6}
-	//mesh, err := NewMeshSimple1D(xs, 3)
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-
-	//for i, elem := range mesh.Elems {
-	//	fmt.Printf("elem %v\n", i)
-	//	for _, n := range elem.Nodes {
-	//		fmt.Printf("    node %p at x=%v\n", n, n.X())
-	//	}
-	//}
-
-	//PrintStiffness(xs, []float64{7, 8, 9, 11, 13, 19}, 3)
-	//PrintStiffness([]float64{0, 1, 2}, []float64{7, 8}, 2)
 }
 
 func TestHeatKernel() {
@@ -45,11 +23,9 @@ func TestHeatKernel() {
 		xs = append(xs, float64(i)/float64(*nnodes-1)*4)
 	}
 	hc := &HeatConduction{
-		X: xs,
-		K: ConstVal(2), // W/(m*C)
-		S: ConstVal(5), // W/m
-		// Area is the cross section area of the conduction medium
-		Area:  0.1,            // m^2
+		X:     xs,
+		K:     ConstVal(2),    // W/(m*C)
+		S:     ConstVal(50),   // W/m^3
 		Left:  DirichletBC(0), // deg C
 		Right: NeumannBC(5),   // W/m^2
 	}
