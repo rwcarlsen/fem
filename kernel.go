@@ -24,6 +24,17 @@ type Boundary1D struct {
 	RightType BoundaryType
 }
 
+func NewBoundary1D(xs []float64, lval, rval float64, ltype, rtype BoundaryType) *Boundary1D {
+	return &Boundary1D{
+		Left:      xs[0],
+		Right:     xs[len(xs)-1],
+		LeftVal:   lval,
+		RightVal:  rval,
+		LeftType:  ltype,
+		RightType: rtype,
+	}
+}
+
 func (b *Boundary1D) Type(x []float64) BoundaryType {
 	if x[0] == b.Left {
 		return b.LeftType

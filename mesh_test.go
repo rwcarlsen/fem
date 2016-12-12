@@ -51,17 +51,10 @@ func TestMeshSolve(t *testing.T) {
 		}
 
 		hc := &HeatConduction{
-			X: test.Xs,
-			K: ConstVal(test.K),
-			S: ConstVal(test.S),
-			Boundary: &Boundary1D{
-				Left:      test.Xs[0],
-				LeftVal:   test.LeftVal,
-				LeftType:  test.Left,
-				Right:     test.Xs[len(test.Xs)-1],
-				RightVal:  test.RightVal,
-				RightType: test.Right,
-			},
+			X:        test.Xs,
+			K:        ConstVal(test.K),
+			S:        ConstVal(test.S),
+			Boundary: NewBoundary1D(test.Xs, test.LeftVal, test.RightVal, test.Left, test.Right),
 		}
 		t.Logf("\n            k=%v", mat64.Formatted(mesh.StiffnessMatrix(hc), mat64.Prefix("              ")))
 		t.Logf("\n            f=%v", mat64.Formatted(mesh.ForceMatrix(hc), mat64.Prefix("              ")))
