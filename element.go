@@ -89,15 +89,15 @@ func (e *Element1D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
 
 	fn := func(x float64) float64 {
 		xs := []float64{x}
-		pars := &KernelParams{X: xs, U: u.Sample(xs), GradU: u.DerivSample(xs, 0), W: w.Weight(xs), GradW: w.DerivWeight(xs, 0), Penalty: DefaultPenalty}
+		pars := &KernelParams{X: xs, U: u.Sample(xs), GradU: u.DerivSample(xs, 0), W: w.Weight(xs), GradW: w.DerivWeight(xs, 0)}
 		return k.VolIntU(pars)
 	}
 	volU := quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
 
 	x1 := []float64{e.left()}
 	x2 := []float64{e.right()}
-	pars1 := &KernelParams{X: x1, U: u.Sample(x1), GradU: u.DerivSample(x1, 0), W: w.Weight(x1), GradW: w.DerivWeight(x1, 0), Penalty: DefaultPenalty}
-	pars2 := &KernelParams{X: x2, U: u.Sample(x2), GradU: u.DerivSample(x2, 0), W: w.Weight(x2), GradW: w.DerivWeight(x2, 0), Penalty: DefaultPenalty}
+	pars1 := &KernelParams{X: x1, U: u.Sample(x1), GradU: u.DerivSample(x1, 0), W: w.Weight(x1), GradW: w.DerivWeight(x1, 0)}
+	pars2 := &KernelParams{X: x2, U: u.Sample(x2), GradU: u.DerivSample(x2, 0), W: w.Weight(x2), GradW: w.DerivWeight(x2, 0)}
 	boundU1 := k.BoundaryIntU(pars1)
 	boundU2 := k.BoundaryIntU(pars2)
 	return volU + boundU1 + boundU2
@@ -108,15 +108,15 @@ func (e *Element1D) IntegrateForce(k Kernel, wNode int) float64 {
 
 	fn := func(x float64) float64 {
 		xvec := []float64{x}
-		pars := &KernelParams{X: xvec, U: 0, GradU: 0, W: w.Weight(xvec), GradW: w.DerivWeight(xvec, 0), Penalty: DefaultPenalty}
+		pars := &KernelParams{X: xvec, U: 0, GradU: 0, W: w.Weight(xvec), GradW: w.DerivWeight(xvec, 0)}
 		return k.VolInt(pars)
 	}
 	vol := quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
 
 	x1 := []float64{e.left()}
 	x2 := []float64{e.right()}
-	pars1 := &KernelParams{X: x1, U: 0, GradU: 0, W: w.Weight(x1), GradW: w.DerivWeight(x1, 0), Penalty: DefaultPenalty}
-	pars2 := &KernelParams{X: x2, U: 0, GradU: 0, W: w.Weight(x2), GradW: w.DerivWeight(x2, 0), Penalty: DefaultPenalty}
+	pars1 := &KernelParams{X: x1, U: 0, GradU: 0, W: w.Weight(x1), GradW: w.DerivWeight(x1, 0)}
+	pars2 := &KernelParams{X: x2, U: 0, GradU: 0, W: w.Weight(x2), GradW: w.DerivWeight(x2, 0)}
 	bound1 := k.BoundaryInt(pars1)
 	bound2 := k.BoundaryInt(pars2)
 
@@ -193,15 +193,15 @@ func (e *Element2D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
 
 	//fn := func(x float64) float64 {
 	//	xs := []float64{x}
-	//	pars := &KernelParams{X: xs, U: u.Sample(xs), GradU: u.DerivSample(xs, 0), W: w.Weight(xs), GradW: w.DerivWeight(xs, 0), Penalty: DefaultPenalty}
+	//	pars := &KernelParams{X: xs, U: u.Sample(xs), GradU: u.DerivSample(xs, 0), W: w.Weight(xs), GradW: w.DerivWeight(xs, 0)}
 	//	return k.VolIntU(pars)
 	//}
 	//volU := quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
 
 	//x1 := []float64{e.left()}
 	//x2 := []float64{e.right()}
-	//pars1 := &KernelParams{X: x1, U: u.Sample(x1), GradU: u.DerivSample(x1, 0), W: w.Weight(x1), GradW: w.DerivWeight(x1, 0), Penalty: DefaultPenalty}
-	//pars2 := &KernelParams{X: x2, U: u.Sample(x2), GradU: u.DerivSample(x2, 0), W: w.Weight(x2), GradW: w.DerivWeight(x2, 0), Penalty: DefaultPenalty}
+	//pars1 := &KernelParams{X: x1, U: u.Sample(x1), GradU: u.DerivSample(x1, 0), W: w.Weight(x1), GradW: w.DerivWeight(x1, 0)}
+	//pars2 := &KernelParams{X: x2, U: u.Sample(x2), GradU: u.DerivSample(x2, 0), W: w.Weight(x2), GradW: w.DerivWeight(x2, 0)}
 	//boundU1 := k.BoundaryIntU(pars1)
 	//boundU2 := k.BoundaryIntU(pars2)
 	//return volU + boundU1 + boundU2
@@ -213,15 +213,15 @@ func (e *Element2D) IntegrateForce(k Kernel, wNode int) float64 {
 
 	//fn := func(x float64) float64 {
 	//	xvec := []float64{x}
-	//	pars := &KernelParams{X: xvec, U: 0, GradU: 0, W: w.Weight(xvec), GradW: w.DerivWeight(xvec, 0), Penalty: DefaultPenalty}
+	//	pars := &KernelParams{X: xvec, U: 0, GradU: 0, W: w.Weight(xvec), GradW: w.DerivWeight(xvec, 0)}
 	//	return k.VolInt(pars)
 	//}
 	//vol := quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
 
 	//x1 := []float64{e.left()}
 	//x2 := []float64{e.right()}
-	//pars1 := &KernelParams{X: x1, U: 0, GradU: 0, W: w.Weight(x1), GradW: w.DerivWeight(x1, 0), Penalty: DefaultPenalty}
-	//pars2 := &KernelParams{X: x2, U: 0, GradU: 0, W: w.Weight(x2), GradW: w.DerivWeight(x2, 0), Penalty: DefaultPenalty}
+	//pars1 := &KernelParams{X: x1, U: 0, GradU: 0, W: w.Weight(x1), GradW: w.DerivWeight(x1, 0)}
+	//pars2 := &KernelParams{X: x2, U: 0, GradU: 0, W: w.Weight(x2), GradW: w.DerivWeight(x2, 0)}
 	//bound1 := k.BoundaryInt(pars1)
 	//bound2 := k.BoundaryInt(pars2)
 

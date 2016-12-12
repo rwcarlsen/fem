@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/binary"
-	"errors"
 	"fmt"
 
 	"github.com/gonum/matrix/mat64"
@@ -132,13 +131,8 @@ func (m *Mesh) Solve(k Kernel) error {
 	A := m.StiffnessMatrix(k)
 	b := m.ForceMatrix(k)
 
-	var chol mat64.Cholesky
-	if ok := chol.Factorize(A); !ok {
-		return errors.New("stiffness matrix is not positive-definite")
-	}
-
 	var u mat64.Vector
-	if err := u.SolveCholeskyVec(&chol, b); err != nil {
+	if err := u.SolveVec(A, b); err != nil {
 		return err
 	}
 
@@ -160,9 +154,13 @@ func (m *Mesh) ForceMatrix(k Kernel) *mat64.Vector {
 	size := len(m.indexNode)
 	mat := mat64.NewVector(size, nil)
 	for e, elem := range m.Elems {
-		for i := range elem.Nodes() {
-			v := elem.IntegrateForce(k, i)
+		for i, n := range elem.Nodes() {
 			a := m.nodeId(e, i)
+			if ok, v := k.IsDirichlet(n.X()); ok {
+				mat.SetVec(a, v)
+				continue
+			}
+			v := elem.IntegrateForce(k, i)
 			mat.SetVec(a, mat.At(a, 0)+v)
 		}
 	}
@@ -173,16 +171,24 @@ func (m *Mesh) ForceMatrix(k Kernel) *mat64.Vector {
 // node test and weight functions representing the result of the integration
 // terms of the weak form of the differential equation in k that
 // include/depend on u(x).  This is the K matrix in the equation the K*u=f.
-func (m *Mesh) StiffnessMatrix(k Kernel) *mat64.SymDense {
+func (m *Mesh) StiffnessMatrix(k Kernel) *mat64.Dense {
 	m.finalize()
 	size := len(m.indexNode)
-	mat := mat64.NewSymDense(size, nil)
+	mat := mat64.NewDense(size, size, nil)
 	for e, elem := range m.Elems {
-		for i := range elem.Nodes() {
+		for i, n := range elem.Nodes() {
 			for j := i; j < len(elem.Nodes()); j++ {
-				v := elem.IntegrateStiffness(k, i, j)
 				a, b := m.nodeId(e, i), m.nodeId(e, j)
-				mat.SetSym(a, b, mat.At(a, b)+v)
+				v := elem.IntegrateStiffness(k, i, j)
+				mat.Set(a, b, mat.At(a, b)+v)
+				mat.Set(b, a, mat.At(a, b))
+				if ok, _ := k.IsDirichlet(n.X()); ok {
+					for c := 0; c < len(elem.Nodes()); c++ {
+						mat.Set(a, c, 0.0)
+					}
+					mat.Set(a, a, 1.0)
+					continue
+				}
 			}
 		}
 	}

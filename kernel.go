@@ -15,8 +15,6 @@ type Boundary struct {
 func DirichletBC(u float64) *Boundary   { return &Boundary{Dirichlet, u} }
 func NeumannBC(gradU float64) *Boundary { return &Boundary{Neumann, gradU} }
 
-const DefaultPenalty = 1e9
-
 type KernelParams struct {
 	X []float64
 	// U is value of the solution shape function if solving a linear system
@@ -32,9 +30,6 @@ type KernelParams struct {
 	W float64
 	// GradW holds the derivative of the weight/test function
 	GradW float64
-	// Penalty represents a penalty factor for converting essential boundary
-	// conditions to natural/traction boundary conditions.
-	Penalty float64
 }
 
 type Kernel interface {
@@ -44,6 +39,7 @@ type Kernel interface {
 	VolInt(p *KernelParams) float64
 	BoundaryIntU(p *KernelParams) float64
 	BoundaryInt(p *KernelParams) float64
+	IsDirichlet(xs []float64) (bool, float64)
 }
 
 type Valer interface {
@@ -129,13 +125,22 @@ func (hc *HeatConduction) BoundaryIntU(p *KernelParams) float64 {
 		if hc.Left.Type == Neumann {
 			return 0
 		}
-		return p.W * hc.Area * p.Penalty * p.U
+		return p.W * hc.Area * p.U
 	} else {
 		if hc.Right.Type == Neumann {
 			return 0
 		}
-		return p.W * hc.Area * p.Penalty * p.U
+		return p.W * hc.Area * p.U
 	}
+}
+
+func (hc *HeatConduction) IsDirichlet(x []float64) (bool, float64) {
+	if x[0] == hc.X[0] && hc.Left.Type == Dirichlet {
+		return true, hc.Left.Val
+	} else if x[0] == hc.X[len(hc.X)-1] && hc.Right.Type == Dirichlet {
+		return true, hc.Right.Val
+	}
+	return false, 0
 }
 
 func (hc *HeatConduction) BoundaryInt(p *KernelParams) float64 {
@@ -145,12 +150,12 @@ func (hc *HeatConduction) BoundaryInt(p *KernelParams) float64 {
 
 	if p.X[0] == hc.X[0] {
 		if hc.Left.Type == Dirichlet {
-			return p.W * hc.Area * p.Penalty * hc.Left.Val
+			return p.W * hc.Area * hc.Left.Val
 		}
 		return p.W * hc.Area * hc.Left.Val
 	} else {
 		if hc.Right.Type == Dirichlet {
-			return p.W * hc.Area * p.Penalty * hc.Right.Val
+			return p.W * hc.Area * hc.Right.Val
 		}
 		return -1 * p.W * hc.Area * hc.Right.Val
 	}
