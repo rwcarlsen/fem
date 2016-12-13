@@ -8,12 +8,12 @@ type Node interface {
 	Sample(x []float64) float64
 	// Weight returns the value of the node'd weight/test function at x.
 	Weight(x []float64) float64
-	// DerivSample returns the partial derivative for the dim'th dimension
+	// DerivSample returns the partial derivative for each dimension
 	// of the node's shape function at x.
-	DerivSample(x []float64, dim int) float64
-	// DerivWeight returns the partial derivative for the dim'th dimension of
+	DerivSample(x []float64) []float64
+	// DerivWeight returns the partial derivative for each dimension of
 	// the node's weight function at x.
-	DerivWeight(x []float64, dim int) float64
+	DerivWeight(x []float64) []float64
 	// Set normalizes the node's shape/solution and weight/test function to be
 	// equal to sample and weight at the node's position X().
 	Set(sample, weight float64)
@@ -73,7 +73,7 @@ func (n *LagrangeNode) Sample(x []float64) float64 {
 
 func (n *LagrangeNode) Weight(x []float64) float64 { return n.Sample(x) / n.U * n.W }
 
-func (n *LagrangeNode) DerivSample(x []float64, dim int) float64 {
+func (n *LagrangeNode) DerivSample(x []float64) []float64 {
 	xx, u := x[0], n.U
 	dudx := 0.0
 	for i, x0 := range n.Xvals {
@@ -83,10 +83,10 @@ func (n *LagrangeNode) DerivSample(x []float64, dim int) float64 {
 		dudx = 1/(n.X()[0]-x0)*u + (xx-x0)/(n.X()[0]-x0)*dudx
 		u *= (xx - x0) / (n.X()[0] - x0)
 	}
-	return dudx
+	return []float64{dudx}
 }
 
-func (n *LagrangeNode) DerivWeight(x []float64, dim int) float64 {
+func (n *LagrangeNode) DerivWeight(x []float64) []float64 {
 	xx, u := x[0], n.U
 	dudx := 0.0
 	for i, x0 := range n.Xvals {
@@ -96,7 +96,7 @@ func (n *LagrangeNode) DerivWeight(x []float64, dim int) float64 {
 		dudx = 1/(n.X()[0]-x0)*u + (xx-x0)/(n.X()[0]-x0)*dudx
 		u *= (xx - x0) / (n.X()[0] - x0)
 	}
-	return dudx
+	return []float64{dudx}
 }
 
 type BilinearNode struct {
@@ -126,18 +126,10 @@ func (n *BilinearNode) Sample(x []float64) float64 {
 
 func (n *BilinearNode) Weight(x []float64) float64 { return n.Sample(x) / n.U * n.W }
 
-func (n *BilinearNode) DerivSample(x []float64, dim int) float64 {
-	if dim == 0 {
-		return n.U / (n.X1 - n.X2)
-	} else {
-		return n.U / (n.Y1 - n.Y2)
-	}
+func (n *BilinearNode) DerivSample(x []float64) []float64 {
+	return []float64{n.U / (n.X1 - n.X2), n.U / (n.Y1 - n.Y2)}
 }
 
-func (n *BilinearNode) DerivWeight(x []float64, dim int) float64 {
-	if dim == 0 {
-		return n.W / (n.X1 - n.X2)
-	} else {
-		return n.W / (n.Y1 - n.Y2)
-	}
+func (n *BilinearNode) DerivWeight(x []float64) []float64 {
+	return []float64{n.W / (n.X1 - n.X2), n.W / (n.Y1 - n.Y2)}
 }

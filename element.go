@@ -41,16 +41,20 @@ func Interpolate(e Element, x []float64) (float64, error) {
 	return u, nil
 }
 
-// Deriv returns the derivative of the element at x - i.e. the superposition
-// of derivatives from each of the element nodes. An error is returned if x is
-// not contained inside the element.
-func Deriv(e Element, x []float64, dim int) (float64, error) {
+// Deriv returns the partial derivatives of the element at x for each
+// dimension - i.e. the superposition of partial derivatives from each of the
+// element nodes. An error is returned if x is not contained inside the
+// element.
+func Deriv(e Element, x []float64) ([]float64, error) {
 	if !e.Contains(x) {
-		return 0, fmt.Errorf("point %v is not inside the element", x)
+		return nil, fmt.Errorf("point %v is not inside the element", x)
 	}
-	u := 0.0
-	for _, n := range e.Nodes() {
-		u += n.DerivSample(x, dim)
+	u := e.Nodes()[0].DerivSample(x)
+	for _, n := range e.Nodes()[1:] {
+		subu := n.DerivSample(x)
+		for i := range subu {
+			u[i] += subu[i]
+		}
 	}
 	return u, nil
 }
@@ -91,8 +95,8 @@ func (e *Element1D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
 		xs := []float64{x}
 		pars := &KernelParams{
 			X: xs, U: u.Sample(xs), W: w.Weight(xs),
-			GradU: []float64{u.DerivSample(xs, 0)},
-			GradW: []float64{w.DerivWeight(xs, 0)},
+			GradU: u.DerivSample(xs),
+			GradW: w.DerivWeight(xs),
 		}
 		return k.VolIntU(pars)
 	}
@@ -102,13 +106,13 @@ func (e *Element1D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
 	x2 := []float64{e.right()}
 	pars1 := &KernelParams{
 		X: x1, U: u.Sample(x1), W: w.Weight(x1),
-		GradU: []float64{u.DerivSample(x1, 0)},
-		GradW: []float64{w.DerivWeight(x1, 0)},
+		GradU: u.DerivSample(x1),
+		GradW: w.DerivWeight(x1),
 	}
 	pars2 := &KernelParams{
 		X: x2, U: u.Sample(x2), W: w.Weight(x2),
-		GradU: []float64{u.DerivSample(x2, 0)},
-		GradW: []float64{w.DerivWeight(x2, 0)},
+		GradU: u.DerivSample(x2),
+		GradW: w.DerivWeight(x2),
 	}
 	boundU1 := k.BoundaryIntU(pars1)
 	boundU2 := k.BoundaryIntU(pars2)
@@ -122,8 +126,7 @@ func (e *Element1D) IntegrateForce(k Kernel, wNode int) float64 {
 		xvec := []float64{x}
 		pars := &KernelParams{
 			X: xvec, U: 0, W: w.Weight(xvec),
-			GradU: []float64{0},
-			GradW: []float64{w.DerivWeight(xvec, 0)},
+			GradW: w.DerivWeight(xvec),
 		}
 		return k.VolInt(pars)
 	}
@@ -133,13 +136,11 @@ func (e *Element1D) IntegrateForce(k Kernel, wNode int) float64 {
 	x2 := []float64{e.right()}
 	pars1 := &KernelParams{
 		X: x1, U: 0, W: w.Weight(x1),
-		GradU: []float64{0},
-		GradW: []float64{w.DerivWeight(x1, 0)},
+		GradW: w.DerivWeight(x1),
 	}
 	pars2 := &KernelParams{
 		X: x2, U: 0, W: w.Weight(x2),
-		GradU: []float64{0},
-		GradW: []float64{w.DerivWeight(x2, 0)},
+		GradW: w.DerivWeight(x2),
 	}
 	bound1 := k.BoundaryInt(pars1)
 	bound2 := k.BoundaryInt(pars2)
@@ -161,11 +162,11 @@ func (e *Element1D) PrintFunc(w io.Writer, nsamples int) {
 		if err != nil {
 			panic(err)
 		}
-		d, err := Deriv(e, x, 0)
+		d, err := Deriv(e, x)
 		if err != nil {
 			panic(err)
 		}
-		fmt.Fprintf(w, "%v\t%v\t%v\n", x, v, d)
+		fmt.Fprintf(w, "%v\t%v\t%v\n", x, v, d[0])
 	}
 }
 
@@ -184,7 +185,7 @@ func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
 			if x[0] < e.left() || x[0] > e.right() {
 				fmt.Fprintf(w, "\t0\t0")
 			} else {
-				fmt.Fprintf(w, "\t%v\t%v", n.Sample(x), n.DerivSample(x, 0))
+				fmt.Fprintf(w, "\t%v\t%v", n.Sample(x), n.DerivSample(x)[0])
 			}
 		}
 		fmt.Fprintf(w, "\n")
@@ -212,42 +213,57 @@ func (e *Element2D) x2() float64 { return e.nodes[len(e.nodes)-1].X()[0] }
 func (e *Element2D) y2() float64 { return e.nodes[len(e.nodes)-1].X()[1] }
 
 func (e *Element2D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
-	panic("unimplemented")
-	//w, u := e.nodes[wNode], e.nodes[uNode]
+	w, u := e.nodes[wNode], e.nodes[uNode]
 
-	//fn := func(x float64) float64 {
-	//	xs := []float64{x}
-	//	pars := &KernelParams{X: xs, U: u.Sample(xs), GradU: u.DerivSample(xs, 0), W: w.Weight(xs), GradW: w.DerivWeight(xs, 0)}
-	//	return k.VolIntU(pars)
-	//}
-	//volU := quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
+	// volume integral
+	vol := 0.0
 
-	//x1 := []float64{e.left()}
-	//x2 := []float64{e.right()}
-	//pars1 := &KernelParams{X: x1, U: u.Sample(x1), GradU: u.DerivSample(x1, 0), W: w.Weight(x1), GradW: w.DerivWeight(x1, 0)}
-	//pars2 := &KernelParams{X: x2, U: u.Sample(x2), GradU: u.DerivSample(x2, 0), W: w.Weight(x2), GradW: w.DerivWeight(x2, 0)}
-	//boundU1 := k.BoundaryIntU(pars1)
-	//boundU2 := k.BoundaryIntU(pars2)
-	//return volU + boundU1 + boundU2
+	// boundary integral
+	fnFactory := func(iFree int, fixedVar float64) func(x float64) float64 {
+		xs := []float64{fixedVar, fixedVar}
+		return func(x float64) float64 {
+			xs[iFree] = x
+			pars := &KernelParams{X: xs, U: u.Sample(xs), GradU: u.DerivSample(xs), W: w.Weight(xs), GradW: w.DerivWeight(xs)}
+			return k.BoundaryIntU(pars)
+		}
+	}
+
+	xFree, yFree := 0, 1
+	x1, x2, y1, y2 := e.x1(), e.x2(), e.y1(), e.y2()
+
+	bound := 0.0
+	bound += quad.Fixed(fnFactory(xFree, y1), x1, x2, 2, quad.Legendre{}, 0)
+	bound += quad.Fixed(fnFactory(xFree, y2), x1, x2, 2, quad.Legendre{}, 0)
+	bound += quad.Fixed(fnFactory(yFree, x1), y1, y2, 2, quad.Legendre{}, 0)
+	bound += quad.Fixed(fnFactory(yFree, x2), y1, y2, 2, quad.Legendre{}, 0)
+
+	return vol + bound
 }
 
 func (e *Element2D) IntegrateForce(k Kernel, wNode int) float64 {
-	panic("unimplemented")
-	//w := e.nodes[wNode]
+	w := e.nodes[wNode]
 
-	//fn := func(x float64) float64 {
-	//	xvec := []float64{x}
-	//	pars := &KernelParams{X: xvec, U: 0, GradU: 0, W: w.Weight(xvec), GradW: w.DerivWeight(xvec, 0)}
-	//	return k.VolInt(pars)
-	//}
-	//vol := quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
+	// volume integral
+	vol := 0.0
 
-	//x1 := []float64{e.left()}
-	//x2 := []float64{e.right()}
-	//pars1 := &KernelParams{X: x1, U: 0, GradU: 0, W: w.Weight(x1), GradW: w.DerivWeight(x1, 0)}
-	//pars2 := &KernelParams{X: x2, U: 0, GradU: 0, W: w.Weight(x2), GradW: w.DerivWeight(x2, 0)}
-	//bound1 := k.BoundaryInt(pars1)
-	//bound2 := k.BoundaryInt(pars2)
+	// boundary integral
+	fnFactory := func(iFree int, fixedVar float64) func(x float64) float64 {
+		xs := []float64{fixedVar, fixedVar}
+		return func(x float64) float64 {
+			xs[iFree] = x
+			pars := &KernelParams{X: xs, W: w.Weight(xs), GradW: w.DerivWeight(xs)}
+			return k.BoundaryInt(pars)
+		}
+	}
 
-	//return vol + bound1 + bound2
+	xFree, yFree := 0, 1
+	x1, x2, y1, y2 := e.x1(), e.x2(), e.y1(), e.y2()
+
+	bound := 0.0
+	bound += quad.Fixed(fnFactory(xFree, y1), x1, x2, 2, quad.Legendre{}, 0)
+	bound += quad.Fixed(fnFactory(xFree, y2), x1, x2, 2, quad.Legendre{}, 0)
+	bound += quad.Fixed(fnFactory(yFree, x1), y1, y2, 2, quad.Legendre{}, 0)
+	bound += quad.Fixed(fnFactory(yFree, x2), y1, y2, 2, quad.Legendre{}, 0)
+
+	return vol + bound
 }

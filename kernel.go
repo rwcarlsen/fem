@@ -1,13 +1,11 @@
 package main
 
-import "math"
-
 type BoundaryType int
 
 const (
 	Dirichlet BoundaryType = iota
 	Neumann
-	BoundaryNone
+	Interior
 )
 
 type Boundary interface {
@@ -41,7 +39,7 @@ func (b *Boundary1D) Type(x []float64) BoundaryType {
 	} else if x[0] == b.Right {
 		return b.RightType
 	}
-	return BoundaryNone
+	return Interior
 }
 
 func (b *Boundary1D) Val(x []float64) float64 {
@@ -57,29 +55,66 @@ func (b *Boundary1D) Val(x []float64) float64 {
 	return 0
 }
 
-func PosEqual(a, b []float64, tol float64) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for i := range a {
-		if math.Abs(a[i]-b[i]) > tol {
-			return false
-		}
-	}
-	return true
+// Boundary2D represents a 2D boundary defined by nodes connected with
+// straight lines.
+type Boundary2D struct {
+	// X holds the X coordinate sequence of the problem boundary.  The last
+	// coordinate connects to the first.
+	X []float64
+	// Y holds the Y coordinate sequence of the problem boundary. The last
+	// coordinate connects to the first.
+	Y []float64
+	// Types holds the sequence of the problem boundary condition types.
+	// Type[i] is the BC type for the path between points (X[i],Y[i]) and
+	// (X[i+1],Y[i+1]) where the last X,Y point wraps/connects to the first.
+	Types []BoundaryType
+	// Val holds boundary condition values. Val[i] is the BC for the path
+	// between points (X[i],Y[i]) and (X[i+1],Y[i+1]) where the last X,Y point
+	// wraps/connects to the first.
+	Vals []float64
+	// Tol is the distance within which a point is considered on the boundary.
+	Tol float64
 }
 
-// Dot performs a vector*vector dot product.
-func Dot(a, b []float64) float64 {
-	if len(a) != len(b) {
-		panic("inconsistent lengths for dot product")
+// loc returns the index (into Type/Val) of the point x on the boundary.
+// It returns -1 if x is not on the boundary.
+func (b *Boundary2D) loc(x []float64) int {
+	xx, yy := x[0], x[1]
+	for i := range b.X {
+		x1, x2 := b.X[i], b.X[0] // wrap last node to 1st node
+		y1, y2 := b.Y[i], b.Y[0] // wrap last node to 1st node
+		if i < len(b.X)-1 {
+			x2 = b.X[i+1]
+			y2 = b.Y[i+1]
+		}
+
+		if xx < x1 || x2 < xx || yy < y1 || y2 < yy {
+			continue
+		}
+
+		proj := vecProject(x, []float64{x1, y1}, []float64{x2, y2})
+		norm := vecL2Norm(vecSub(proj, x))
+		if norm < b.Tol {
+			return i
+		}
 	}
-	v := 0.0
-	for i := range a {
-		v += a[i] * b[i]
+	return -1
+}
+
+func (b *Boundary2D) Type(x []float64) BoundaryType {
+	i := b.loc(x)
+	if i == -1 {
+		return Interior
 	}
-	return v
+	return b.Types[i]
+}
+
+func (b *Boundary2D) Val(x []float64) float64 {
+	i := b.loc(x)
+	if i == -1 {
+		return 0.0
+	}
+	return b.Vals[i]
 }
 
 type KernelParams struct {

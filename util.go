@@ -1,0 +1,67 @@
+package main
+
+import "math"
+
+func PosEqual(a, b []float64, tol float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if math.Abs(a[i]-b[i]) > tol {
+			return false
+		}
+	}
+	return true
+}
+
+// Dot performs a vector*vector dot product.
+func Dot(a, b []float64) float64 {
+	if len(a) != len(b) {
+		panic("inconsistent lengths for dot product")
+	}
+	v := 0.0
+	for i := range a {
+		v += a[i] * b[i]
+	}
+	return v
+}
+
+// vecProject projects multidimensional point p onto the line connecting points
+// end1 and end2.  All three vectors and the return vector have the same
+// length/dimension.
+func vecProject(p []float64, end1, end2 []float64) []float64 {
+	if len(p) != len(end1) || len(end1) != len(end2) {
+		panic("inconsistent lengths for vector projection")
+	}
+
+	s := vecSub(end2, end1)
+	v := vecSub(p, end1)
+	vDotS := Dot(v, s)
+	sDotS := Dot(s, s)
+
+	proj := make([]float64, len(p))
+	for i := range s {
+		proj[i] = s[i] * vDotS / sDotS
+	}
+	return proj
+}
+
+func vecL2Norm(vec []float64) float64 {
+	tot := 0.0
+	for _, v := range vec {
+		tot += v * v
+	}
+	return math.Sqrt(tot)
+}
+
+func vecSub(a, b []float64) []float64 {
+	if len(a) != len(b) {
+		panic("inconsistent lengths for vector subtraction")
+	}
+	diff := make([]float64, len(a))
+	for i := range a {
+		diff[i] = a[i] - b[i]
+	}
+	return diff
+}
