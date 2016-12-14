@@ -99,37 +99,60 @@ func (n *LagrangeNode) DerivWeight(x []float64) []float64 {
 	return []float64{dudx}
 }
 
-type BilinearNode struct {
+type BilinQuadNode struct {
+	X1, Y1 float64
+	X2, Y2 float64
+	X3, Y3 float64
+	X4, Y4 float64
+	U, W   float64
+}
+
+func (n *BilinQuadNode) X() []float64               { return []float64{n.X1, n.Y1} }
+func (n *BilinQuadNode) Set(sample, weight float64) { n.U, n.W = sample, weight }
+
+func (n *BilinQuadNode) Sample(x []float64) float64 {
+	panic("unimplemented")
+	//u := n.U
+	//xx, yy := x[0] * x[1]
+
+	//xmid := (xx - n.X1) / (n.X2 - n.X1)
+	//ymid := (yy - n.X1) / (n.X2 - n.X1)
+
+	//u *= (xx - n.X2) / (n.X1 - n.X2)
+	//u *= (yy - n.Y2) / (n.Y1 - n.Y2)
+	//return u
+}
+
+type BilinRectNode struct {
 	X1, Y1 float64
 	X2, Y2 float64
 	U, W   float64
 }
 
-// NewBilinearNode creates a new 2D rectangular node with bilinear
+// NewBilinRectNode creates a new 2D rectangular node with bilinear
 // interpolation with U and W initialized to 1.0. The point x1,y1 is the
 // "primary" point where the node takes on its value U.  The node evaluates to
 // zero at all other corner points (x1,y2; x2,y1; x2,y2).
-func NewBilinearNode(x1, y1, x2, y2 float64) *BilinearNode {
-	return &BilinearNode{x1, y1, x2, y2, 1.0, 1.0}
+func NewBilinRectNode(x1, y1, x2, y2 float64) *BilinRectNode {
+	return &BilinRectNode{x1, y1, x2, y2, 1.0, 1.0}
 }
 
-func (n *BilinearNode) X() []float64 { return []float64{n.X1, n.Y1} }
+func (n *BilinRectNode) X() []float64               { return []float64{n.X1, n.Y1} }
+func (n *BilinRectNode) Set(sample, weight float64) { n.U, n.W = sample, weight }
 
-func (n *BilinearNode) Set(sample, weight float64) { n.U, n.W = sample, weight }
-
-func (n *BilinearNode) Sample(x []float64) float64 {
+func (n *BilinRectNode) Sample(x []float64) float64 {
 	xx, yy, u := x[0], x[1], n.U
 	u *= (xx - n.X2) / (n.X1 - n.X2)
 	u *= (yy - n.Y2) / (n.Y1 - n.Y2)
 	return u
 }
 
-func (n *BilinearNode) Weight(x []float64) float64 { return n.Sample(x) / n.U * n.W }
+func (n *BilinRectNode) Weight(x []float64) float64 { return n.Sample(x) / n.U * n.W }
 
-func (n *BilinearNode) DerivSample(x []float64) []float64 {
+func (n *BilinRectNode) DerivSample(x []float64) []float64 {
 	return []float64{n.U / (n.X1 - n.X2), n.U / (n.Y1 - n.Y2)}
 }
 
-func (n *BilinearNode) DerivWeight(x []float64) []float64 {
+func (n *BilinRectNode) DerivWeight(x []float64) []float64 {
 	return []float64{n.W / (n.X1 - n.X2), n.W / (n.Y1 - n.Y2)}
 }

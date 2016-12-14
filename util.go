@@ -1,18 +1,16 @@
 package main
 
-import "math"
+import (
+	"math"
+
+	"github.com/gonum/matrix/mat64"
+)
 
 func PosEqual(a, b []float64, tol float64) bool {
 	if len(a) != len(b) {
 		return false
 	}
-
-	for i := range a {
-		if math.Abs(a[i]-b[i]) > tol {
-			return false
-		}
-	}
-	return true
+	return vecL2Norm(vecSub(a, b)) <= tol
 }
 
 // Dot performs a vector*vector dot product.
@@ -64,4 +62,73 @@ func vecSub(a, b []float64) []float64 {
 		diff[i] = a[i] - b[i]
 	}
 	return diff
+}
+
+type AffineTransform struct {
+	srcToDst *mat64.Dense
+	dstToSrc *mat64.Dense
+}
+
+// NewAffineTransform computes the transofmration matrix that maps the
+// quadrilateral specified by src coordinates to the quadrilateral specified
+// by dst coordinates.  All slice lengths must be 4, sub-slices hold pairs of
+// xy coordinates.  To map from src coordinates to dst coordinates, multiply
+// the returned transformation  matrix against a length 2 column vector
+// holding the x,y coordinates.
+func NewAffineTransform(src, dst [][]float64) (*AffineTransform, error) {
+	A := affinePart(src)
+	B := affinePart(dst)
+
+	var Ainv mat64.Dense
+	var Binv mat64.Dense
+	var forward mat64.Dense
+	var backward mat64.Dense
+
+	err := Ainv.Inverse(A)
+	if err != nil {
+		return nil, err
+	}
+	err = Binv.Inverse(B)
+	if err != nil {
+		return nil, err
+	}
+
+	forward.Mul(B, &Ainv)
+	backward.Mul(A, &Binv)
+	return &AffineTransform{srcToDst: &forward, dstToSrc: &backward}, nil
+}
+
+func affinePart(pts [][]float64) *mat64.Dense {
+	A := mat64.NewDense(3, 3, nil)
+	b := mat64.NewDense(3, 1, []float64{pts[3][0], pts[3][1], 1})
+	for c, val := range pts[:3] {
+		x, y := val[0], val[1]
+		A.Set(0, c, x)
+		A.Set(1, c, y)
+		A.Set(2, c, 1)
+	}
+
+	var u mat64.Dense
+	err := u.Solve(A, b)
+	if err != nil {
+		panic(err)
+	}
+	for r := range pts[:3] {
+		A.Set(r, 0, A.At(r, 0)*u.At(0, 0))
+		A.Set(r, 1, A.At(r, 1)*u.At(1, 0))
+		A.Set(r, 2, A.At(r, 2)*u.At(2, 0))
+	}
+	return A
+}
+
+func (at *AffineTransform) Reverse(xp, yp float64) (float64, float64) {
+	u := mat64.NewDense(3, 1, []float64{xp, yp, 1})
+	u.Mul(at.dstToSrc, u)
+	return u.At(0, 0) / u.At(2, 0), u.At(1, 0) / u.At(2, 0)
+}
+
+func (at *AffineTransform) Apply(x, y float64) (float64, float64) {
+	u := mat64.NewDense(3, 1, []float64{x, y, 1})
+	u.Mul(at.srcToDst, u)
+	return u.At(0, 0) / u.At(2, 0), u.At(1, 0) / u.At(2, 0)
 }

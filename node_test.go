@@ -37,7 +37,7 @@ func TestLagrangeNode(t *testing.T) {
 	}
 }
 
-func TestBilinearNode(t *testing.T) {
+func TestBilinRectNode(t *testing.T) {
 	tests := []struct {
 		X1, Y1  float64
 		X2, Y2  float64
@@ -69,16 +69,16 @@ func TestBilinearNode(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		var n *BilinearNode
+		var n *BilinRectNode
 		switch test.Index {
 		case 0:
-			n = NewBilinearNode(test.X1, test.Y1, test.X2, test.Y2)
+			n = NewBilinRectNode(test.X1, test.Y1, test.X2, test.Y2)
 		case 1:
-			n = NewBilinearNode(test.X1, test.Y2, test.X2, test.Y1)
+			n = NewBilinRectNode(test.X1, test.Y2, test.X2, test.Y1)
 		case 2:
-			n = NewBilinearNode(test.X2, test.Y1, test.X1, test.Y2)
+			n = NewBilinRectNode(test.X2, test.Y1, test.X1, test.Y2)
 		case 3:
-			n = NewBilinearNode(test.X2, test.Y2, test.X1, test.Y1)
+			n = NewBilinRectNode(test.X2, test.Y2, test.X1, test.Y1)
 		}
 		t.Logf("test %v x1,x2,y1,y2=%v,%v,%v,%v:", i+1, n.X1, n.X2, n.Y1, n.Y2)
 		for j, point := range test.SampleX {
