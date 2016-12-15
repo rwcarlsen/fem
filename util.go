@@ -64,20 +64,20 @@ func vecSub(a, b []float64) []float64 {
 	return diff
 }
 
-type AffineTransform struct {
+type ProjectiveTransform struct {
 	srcToDst *mat64.Dense
 	dstToSrc *mat64.Dense
 }
 
-// NewAffineTransform computes the transofmration matrix that maps the
+// NewProjectiveTransform computes the transofmration matrix that maps the
 // quadrilateral specified by src coordinates to the quadrilateral specified
 // by dst coordinates.  All slice lengths must be 4, sub-slices hold pairs of
 // xy coordinates.  To map from src coordinates to dst coordinates, multiply
 // the returned transformation  matrix against a length 2 column vector
 // holding the x,y coordinates.
-func NewAffineTransform(src, dst [][]float64) (*AffineTransform, error) {
-	A := affinePart(src)
-	B := affinePart(dst)
+func NewProjectiveTransform(src, dst [][]float64) (*ProjectiveTransform, error) {
+	A := projectivePart(src)
+	B := projectivePart(dst)
 
 	var Ainv mat64.Dense
 	var Binv mat64.Dense
@@ -95,10 +95,10 @@ func NewAffineTransform(src, dst [][]float64) (*AffineTransform, error) {
 
 	forward.Mul(B, &Ainv)
 	backward.Mul(A, &Binv)
-	return &AffineTransform{srcToDst: &forward, dstToSrc: &backward}, nil
+	return &ProjectiveTransform{srcToDst: &forward, dstToSrc: &backward}, nil
 }
 
-func affinePart(pts [][]float64) *mat64.Dense {
+func projectivePart(pts [][]float64) *mat64.Dense {
 	A := mat64.NewDense(3, 3, nil)
 	b := mat64.NewDense(3, 1, []float64{pts[3][0], pts[3][1], 1})
 	for c, val := range pts[:3] {
@@ -121,14 +121,52 @@ func affinePart(pts [][]float64) *mat64.Dense {
 	return A
 }
 
-func (at *AffineTransform) Reverse(xp, yp float64) (float64, float64) {
+func (at *ProjectiveTransform) Apply(x, y float64) (float64, float64) {
+	u := mat64.NewDense(3, 1, []float64{x, y, 1})
+	u.Mul(at.srcToDst, u)
+	return u.At(0, 0) / u.At(2, 0), u.At(1, 0) / u.At(2, 0)
+}
+
+func (at *ProjectiveTransform) Reverse(xp, yp float64) (float64, float64) {
 	u := mat64.NewDense(3, 1, []float64{xp, yp, 1})
 	u.Mul(at.dstToSrc, u)
 	return u.At(0, 0) / u.At(2, 0), u.At(1, 0) / u.At(2, 0)
 }
 
-func (at *AffineTransform) Apply(x, y float64) (float64, float64) {
-	u := mat64.NewDense(3, 1, []float64{x, y, 1})
-	u.Mul(at.srcToDst, u)
-	return u.At(0, 0) / u.At(2, 0), u.At(1, 0) / u.At(2, 0)
+func (pt *ProjectiveTransform) Jacobian(x, y float64) *mat64.Dense {
+	e, n := pt.Apply(x, y)
+	A := mat64.NewDense(4, 4, nil)
+
+	a1 := pt.srcToDst.At(0, 0)
+	a2 := pt.srcToDst.At(0, 1)
+	b1 := pt.srcToDst.At(1, 0)
+	b2 := pt.srcToDst.At(1, 1)
+	c1 := pt.srcToDst.At(2, 0)
+	c2 := pt.srcToDst.At(2, 1)
+	c3 := pt.srcToDst.At(2, 2)
+
+	A.Set(0, 0, a1-c1*e)
+	A.Set(0, 1, a2)
+	A.Set(1, 2, a1-c1*e)
+	A.Set(1, 3, a2-c2*e)
+
+	A.Set(2, 2, b1-c1*n)
+	A.Set(2, 3, b2)
+	A.Set(3, 0, b1-c1*n)
+	A.Set(3, 1, b2-c2*n)
+
+	v := c1*x + c2*y + c3
+	b := mat64.NewVector(4, []float64{v, 0, v, 0})
+
+	var partials mat64.Vector
+
+	partials.SolveVec(A, b)
+
+	jacobian := mat64.NewDense(2, 2, nil)
+	jacobian.Set(0, 0, partials.At(0, 0))
+	jacobian.Set(0, 1, partials.At(1, 0))
+	jacobian.Set(1, 0, partials.At(2, 0))
+	jacobian.Set(1, 1, partials.At(3, 0))
+
+	return jacobian
 }
