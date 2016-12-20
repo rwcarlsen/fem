@@ -133,6 +133,10 @@ func (at *ProjectiveTransform) Reverse(xp, yp float64) (float64, float64) {
 	return u.At(0, 0) / u.At(2, 0), u.At(1, 0) / u.At(2, 0)
 }
 
+func (pt *ProjectiveTransform) JacobianDet(x, y float64) float64 {
+	return mat64.Det(pt.Jacobian(x, y))
+}
+
 func (pt *ProjectiveTransform) Jacobian(x, y float64) *mat64.Dense {
 	e, n := pt.Apply(x, y)
 	A := mat64.NewDense(4, 4, nil)
