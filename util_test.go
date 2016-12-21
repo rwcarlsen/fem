@@ -85,12 +85,19 @@ func TestProjectiveTransform(t *testing.T) {
 			want := test.want[j]
 			x, y := point[0], point[1]
 			wantx, wanty := want[0], want[1]
-			gotx, goty := trans.Apply(x, y)
+			gotx, goty := trans.Transform(x, y)
 
 			if wantx != gotx || wanty != goty {
 				t.Errorf("    ERR transform[%v,%v] = got %v,%v want %v,%v", x, y, gotx, goty, wantx, wanty)
+				continue
 			} else {
 				t.Logf("        transform[%v,%v] = %v,%v", x, y, gotx, goty)
+			}
+
+			revx, revy := trans.Reverse(gotx, goty)
+			if math.Abs(revx-x) > tol {
+				t.Errorf("            ERR reverse transform failed: got x,y = %v,%v", revx, revy)
+				continue
 			}
 
 			gotJ := trans.Jacobian(x, y)

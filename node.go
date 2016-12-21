@@ -1,5 +1,7 @@
 package main
 
+import "errors"
+
 // Node represents a node and its interpolant within a finite element.
 type Node interface {
 	// X returns the global/absolute position of the node.
@@ -100,27 +102,69 @@ func (n *LagrangeNode) DerivWeight(x []float64) []float64 {
 }
 
 type BilinQuadNode struct {
-	X1, Y1 float64
-	X2, Y2 float64
-	X3, Y3 float64
-	X4, Y4 float64
-	U, W   float64
+	X1, Y1    float64
+	X2, Y2    float64
+	X3, Y3    float64
+	X4, Y4    float64
+	U, W      float64
+	Transform *ProjectiveTransform
+}
+
+// NewBilinQuadNode creates a bilinearly interpolated node for the points
+// x1,y2; x2,y2; x3,y3; x4,y4.  The point x1,y1 is the "primary" point and
+// node location (i.e. the only one of the four points where the shape
+// function is non-zero).  The points 1 thorugh 4 must be in counter-clockwise
+// order.
+func NewBilinQuadNode(x1, y1, x2, y2, x3, y3, x4, y4 float64) (*BilinQuadNode, error) {
+	trans, err := NewProjectiveTransform(
+		[][]float64{{-1, -1}, {1, -1}, {1, 1}, {-1, 1}},
+		[][]float64{{x1, y1}, {x2, y2}, {x3, y3}, {x4, y4}},
+	)
+	if err != nil {
+		return nil, errors.New("failed to compute coordinate transform")
+	}
+
+	return &BilinQuadNode{
+		X1: x1, X2: x2, X3: x3, X4: x4,
+		Y1: y1, Y2: y2, Y3: y3, Y4: y4,
+		U: 1, W: 1,
+		Transform: trans,
+	}, nil
 }
 
 func (n *BilinQuadNode) X() []float64               { return []float64{n.X1, n.Y1} }
 func (n *BilinQuadNode) Set(sample, weight float64) { n.U, n.W = sample, weight }
 
-func (n *BilinQuadNode) Sample(x []float64) float64 {
-	panic("unimplemented")
-	//u := n.U
-	//xx, yy := x[0] * x[1]
+func (n *BilinQuadNode) Sample(xv []float64) float64 {
+	x, y := xv[0], xv[1]
+	xx, yy := n.Transform.Reverse(x, y)
 
-	//xmid := (xx - n.X1) / (n.X2 - n.X1)
-	//ymid := (yy - n.X1) / (n.X2 - n.X1)
+	u := n.U
+	u *= (xx - 1) / (-1 - 1)
+	u *= (yy - 1) / (-1 - 1)
+	return u
+}
 
-	//u *= (xx - n.X2) / (n.X1 - n.X2)
-	//u *= (yy - n.Y2) / (n.Y1 - n.Y2)
-	//return u
+func (n *BilinQuadNode) Weight(x []float64) float64 { return n.Sample(x) / n.U * n.W }
+
+func (n *BilinQuadNode) DerivSample(xv []float64) []float64 {
+	x, y := xv[0], xv[1]
+	e, eta := n.Transform.Reverse(x, y)
+	jac := n.Transform.Jacobian(x, y)
+
+	dude := 1 / 4 * (eta - 1)
+	dxde, dyde := jac.At(0, 0), jac.At(0, 1)
+	dxdn, dydn := jac.At(1, 0), jac.At(1, 1)
+	dudx := n.U * (dude/dxde + dudn/dxdn)
+	dudy := n.U * (dude/dyde + dudn/dydn)
+	return []float64{dudx, dudy}
+}
+
+func (n *BilinQuadNode) DerivWeight(x []float64) []float64 {
+	dwdx := n.DerivSample(x)
+	dwdx[0] *= n.W / n.U
+	dwdx[1] *= n.W / n.U
+	return dwdx
 }
 
 type BilinRectNode struct {

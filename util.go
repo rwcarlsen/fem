@@ -6,6 +6,26 @@ import (
 	"github.com/gonum/matrix/mat64"
 )
 
+func min(vals ...float64) float64 {
+	v := vals[0]
+	for _, val := range vals[1:] {
+		if val < v {
+			v = val
+		}
+	}
+	return v
+}
+
+func max(vals ...float64) float64 {
+	v := vals[0]
+	for _, val := range vals[1:] {
+		if val > v {
+			v = val
+		}
+	}
+	return v
+}
+
 func PosEqual(a, b []float64, tol float64) bool {
 	if len(a) != len(b) {
 		return false
@@ -121,7 +141,7 @@ func projectivePart(pts [][]float64) *mat64.Dense {
 	return A
 }
 
-func (at *ProjectiveTransform) Apply(x, y float64) (float64, float64) {
+func (at *ProjectiveTransform) Transform(x, y float64) (float64, float64) {
 	u := mat64.NewDense(3, 1, []float64{x, y, 1})
 	u.Mul(at.srcToDst, u)
 	return u.At(0, 0) / u.At(2, 0), u.At(1, 0) / u.At(2, 0)
@@ -138,7 +158,7 @@ func (pt *ProjectiveTransform) JacobianDet(x, y float64) float64 {
 }
 
 func (pt *ProjectiveTransform) Jacobian(x, y float64) *mat64.Dense {
-	e, n := pt.Apply(x, y)
+	e, n := pt.Transform(x, y)
 	A := mat64.NewDense(4, 4, nil)
 
 	a1 := pt.srcToDst.At(0, 0)

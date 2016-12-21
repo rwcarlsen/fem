@@ -193,24 +193,50 @@ func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
 }
 
 type Element2D struct {
-	nodes []Node
+	nodes      []Node
+	trans      *ProjectiveTransform
+	xmin, xmax float64
+	ymin, ymax float64
+}
+
+func NewElementSimple2D(x1, y1, x2, y2, x3, y3, x4, y4 float64) (*Element2D, error) {
+	n1, err := NewBilinQuadNode(x1, y1, x2, y2, x3, y3, x4, y4)
+	if err != nil {
+		return nil, err
+	}
+	n2, err := NewBilinQuadNode(x2, y2, x3, y3, x4, y4, x1, y1)
+	if err != nil {
+		return nil, err
+	}
+	n3, err := NewBilinQuadNode(x3, y3, x4, y4, x1, y1, x2, y2)
+	if err != nil {
+		return nil, err
+	}
+	n4, err := NewBilinQuadNode(x4, y4, x1, y1, x2, y2, x3, y3)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Element2D{
+		nodes: []Node{n1, n2, n3, n4},
+		trans: n1.Transform,
+		xmin:  min(x1, x2, x3, x4),
+		xmax:  max(x1, x2, x3, x4),
+		ymin:  min(y1, y2, y3, y4),
+		ymax:  max(y1, y2, y3, y4),
+	}, nil
 }
 
 func (e *Element2D) Bounds() (low, up []float64) {
-	return []float64{e.x1(), e.y1()}, []float64{e.x2(), e.y2()}
+	return []float64{e.xmin, e.ymin}, []float64{e.xmax, e.ymax}
 }
 
 func (e *Element2D) Nodes() []Node { return e.nodes }
 
 func (e *Element2D) Contains(x []float64) bool {
-	xx, yy := x[0], x[1]
-	return e.x1() <= xx && xx <= e.x2() && e.y1() <= yy && yy <= e.y2()
+	xx, yy := e.trans.Reverse(x[0], x[1])
+	return -1 <= xx && xx <= 1 && -1 <= yy && yy <= 1
 }
-
-func (e *Element2D) x1() float64 { return e.nodes[0].X()[0] }
-func (e *Element2D) y1() float64 { return e.nodes[0].X()[1] }
-func (e *Element2D) x2() float64 { return e.nodes[len(e.nodes)-1].X()[0] }
-func (e *Element2D) y2() float64 { return e.nodes[len(e.nodes)-1].X()[1] }
 
 func (e *Element2D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
 	w, u := e.nodes[wNode], e.nodes[uNode]
@@ -223,13 +249,14 @@ func (e *Element2D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
 		xs := []float64{fixedVar, fixedVar}
 		return func(x float64) float64 {
 			xs[iFree] = x
+			xs[0], xs[1] = e.trans.Transform(xs[0], xs[1])
 			pars := &KernelParams{X: xs, U: u.Sample(xs), GradU: u.DerivSample(xs), W: w.Weight(xs), GradW: w.DerivWeight(xs)}
 			return k.BoundaryIntU(pars)
 		}
 	}
 
 	xFree, yFree := 0, 1
-	x1, x2, y1, y2 := e.x1(), e.x2(), e.y1(), e.y2()
+	x1, x2, y1, y2 := -1, 1, -1, 1
 
 	bound := 0.0
 	bound += quad.Fixed(fnFactory(xFree, y1), x1, x2, 2, quad.Legendre{}, 0)
