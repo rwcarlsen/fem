@@ -256,7 +256,7 @@ func (e *Element2D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
 	}
 
 	xFree, yFree := 0, 1
-	x1, x2, y1, y2 := -1, 1, -1, 1
+	x1, x2, y1, y2 := -1.0, 1.0, -1.0, 1.0
 
 	bound := 0.0
 	bound += quad.Fixed(fnFactory(xFree, y1), x1, x2, 2, quad.Legendre{}, 0)
@@ -284,7 +284,7 @@ func (e *Element2D) IntegrateForce(k Kernel, wNode int) float64 {
 	}
 
 	xFree, yFree := 0, 1
-	x1, x2, y1, y2 := e.x1(), e.x2(), e.y1(), e.y2()
+	x1, x2, y1, y2 := -1.0, 1.0, -1.0, 1.0
 
 	bound := 0.0
 	bound += quad.Fixed(fnFactory(xFree, y1), x1, x2, 2, quad.Legendre{}, 0)

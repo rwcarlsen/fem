@@ -153,6 +153,7 @@ func (n *BilinQuadNode) DerivSample(xv []float64) []float64 {
 	jac := n.Transform.Jacobian(x, y)
 
 	dude := 1 / 4 * (eta - 1)
+	dudn := 1 / 4 * (e - 1)
 	dxde, dyde := jac.At(0, 0), jac.At(0, 1)
 	dxdn, dydn := jac.At(1, 0), jac.At(1, 1)
 	dudx := n.U * (dude/dxde + dudn/dxdn)
