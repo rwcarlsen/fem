@@ -1,11 +1,64 @@
 package main
 
 import (
+	"fmt"
 	"math"
+	"math/rand"
 	"testing"
 
 	"github.com/gonum/matrix/mat64"
 )
+
+func TestParallelSolve(t *testing.T) {
+	A := mat64.NewDense(3, 3, []float64{1, 2, 3, 5, 3, 7, 8, 4, 1})
+	b := mat64.NewDense(3, 1, []float64{1, 1, 1})
+
+	x := ParallelSolve(A, b)
+	var x2 mat64.Dense
+	x2.Solve(A, b)
+	fmt.Printf("  x=%.5v\n", mat64.Formatted(x, mat64.Prefix("    ")))
+	fmt.Printf(" x2=%.5v\n", mat64.Formatted(&x2, mat64.Prefix("    ")))
+}
+
+func BenchmarkParallelSolve(b *testing.B) {
+	b.Run("n=10,util", benchParallelSolve(ParallelSolve, 10))
+	b.Run("n=100,util", benchParallelSolve(ParallelSolve, 100))
+	b.Run("n=1000,util", benchParallelSolve(ParallelSolve, 1000))
+	b.Run("n=2000,util", benchParallelSolve(ParallelSolve, 2000))
+	//b.Run("n=10000,util", benchParallelSolve(ParallelSolve, 10000))
+
+	//mat64Solve := func(A, b *mat64.Dense) *mat64.Dense {
+	//	var x2 mat64.Dense
+	//	x2.Solve(A, b)
+	//	return &x2
+	//}
+	//b.Run("n=10,mat64", benchParallelSolve(mat64Solve, 10))
+	//b.Run("n=100,mat64", benchParallelSolve(mat64Solve, 100))
+	//b.Run("n=1000,mat64", benchParallelSolve(mat64Solve, 1000))
+	//b.Run("n=10000,mat64", benchParallelSolve(mat64Solve, 10000))
+}
+
+func benchParallelSolve(solveFunc func(a, b *mat64.Dense) *mat64.Dense, n int) func(b *testing.B) {
+	return func(b *testing.B) {
+		xs := make([]float64, n*n)
+		for i := range xs {
+			xs[i] = rand.Float64()
+		}
+
+		bs := make([]float64, n)
+		for i := range bs {
+			bs[i] = rand.Float64()
+		}
+
+		A := mat64.NewDense(n, n, xs)
+		bb := mat64.NewDense(n, 1, bs)
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = solveFunc(A, bb)
+		}
+	}
+}
 
 func TestProjectiveTransform(t *testing.T) {
 	var tests = []struct {

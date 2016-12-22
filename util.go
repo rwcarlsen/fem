@@ -6,6 +6,90 @@ import (
 	"github.com/gonum/matrix/mat64"
 )
 
+type rowmult struct {
+	row   int
+	pivot int
+}
+
+func scaleRow(Ab *mat64.Dense, pivot int) {
+	data := Ab.RawRowView(pivot)
+	mult := 1 / data[pivot]
+	for i := range data {
+		data[i] *= mult
+	}
+}
+
+func rowEliminate(Ab *mat64.Dense, pivot int, pivotdata []float64, row int) {
+	data := Ab.RawRowView(row)
+	mult := data[pivot]
+	data[pivot] = 0
+	for j := pivot + 1; j < len(data); j++ {
+		data[j] -= mult * pivotdata[j]
+	}
+}
+
+func swapRowNonzero(Ab *mat64.Dense, pivot int, idxs []int, tol float64) {
+	r, _ := Ab.Dims()
+	for i := pivot; i < r; i++ {
+		if Ab.At(i, pivot) > tol {
+			idxs[pivot], idxs[i] = idxs[i], idxs[pivot]
+			pivotrow := Ab.RawRowView(pivot)
+			swaprow := make([]float64, len(pivotrow))
+			copy(swaprow, Ab.RawRowView(i))
+			Ab.SetRow(i, pivotrow)
+			Ab.SetRow(pivot, swaprow)
+		}
+	}
+	panic("singular system")
+}
+
+func ParallelSolve(A, b *mat64.Dense) *mat64.Dense {
+	var Ab mat64.Dense
+	Ab.Augment(A, b)
+	//fmt.Printf("    %v\n", mat64.Formatted(&Ab, mat64.Prefix("    ")))
+
+	r, c := A.Dims()
+	idxs := make([]int, r)
+	for i := range idxs {
+		idxs[i] = i
+	}
+	naug := c + 1
+
+	for i := 0; i < r; i++ {
+		if Ab.At(i, i) == 0 {
+			swapRowNonzero(&Ab, i, idxs, 1e-10)
+		}
+		scaleRow(&Ab, i)
+		pivotdata := Ab.RawRowView(i)
+		for j := 0; j < c; j++ {
+			if i == j {
+				continue
+			}
+
+			//rowEliminate(&Ab, i, pivotdata, j)
+			//pivot, row := i, j
+			data := Ab.RawRowView(j)
+			mult := data[i]
+			data[i] = 0
+			for k := i + 1; k < naug; k++ {
+				data[k] -= mult * pivotdata[k]
+			}
+			//fmt.Printf("pivot=%v, row=%v\n", i, j)
+			//fmt.Printf("    %.5v\n", mat64.Formatted(&Ab, mat64.Prefix("    ")))
+		}
+	}
+
+	// reswap to original order
+	x := Ab.ColView(c)
+	for i, idx := range idxs {
+		a, b := x.At(i, 0), x.At(idx, 0)
+		x.SetVec(i, b)
+		x.SetVec(idx, a)
+	}
+
+	return mat64.DenseCopyOf(x)
+}
+
 func min(vals ...float64) float64 {
 	v := vals[0]
 	for _, val := range vals[1:] {
