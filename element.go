@@ -247,11 +247,18 @@ func (e *Element2D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
 	// boundary integral
 	fnFactory := func(iFree int, fixedVar float64) func(x float64) float64 {
 		xs := []float64{fixedVar, fixedVar}
+		en := []float64{fixedVar, fixedVar}
 		return func(x float64) float64 {
-			xs[iFree] = x
-			xs[0], xs[1] = e.trans.Transform(xs[0], xs[1])
+			en[iFree] = x
+			ee, nn := en[0], en[1]
+			xs[0], xs[1] = e.trans.Transform(ee, nn)
+			jac := e.trans.Jacobian(ee, nn)
+			dxdfree := jac.At(iFree, 0)
+			dydfree := jac.At(iFree, 1)
 			pars := &KernelParams{X: xs, U: u.Sample(xs), GradU: u.DerivSample(xs), W: w.Weight(xs), GradW: w.DerivWeight(xs)}
-			return k.BoundaryIntU(pars)
+			// I really need the Reverse transform jacobian, but using the
+			// inverse here works for now:
+			return 1 / (dxdfree + dydfree) * k.BoundaryIntU(pars)
 		}
 	}
 
@@ -276,10 +283,18 @@ func (e *Element2D) IntegrateForce(k Kernel, wNode int) float64 {
 	// boundary integral
 	fnFactory := func(iFree int, fixedVar float64) func(x float64) float64 {
 		xs := []float64{fixedVar, fixedVar}
+		en := []float64{fixedVar, fixedVar}
 		return func(x float64) float64 {
-			xs[iFree] = x
+			en[iFree] = x
+			ee, nn := en[0], en[1]
+			xs[0], xs[1] = e.trans.Transform(ee, nn)
+			jac := e.trans.Jacobian(ee, nn)
+			dxdfree := jac.At(iFree, 0)
+			dydfree := jac.At(iFree, 1)
 			pars := &KernelParams{X: xs, W: w.Weight(xs), GradW: w.DerivWeight(xs)}
-			return k.BoundaryInt(pars)
+			// I really need the Reverse transform jacobian, but using the
+			// inverse here works for now:
+			return 1 / (dxdfree + dydfree) * k.BoundaryIntU(pars)
 		}
 	}
 
