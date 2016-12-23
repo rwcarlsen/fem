@@ -49,7 +49,7 @@ func (k testKernel) BoundaryIntU(p *KernelParams) float64     { return float64(k
 func (k testKernel) BoundaryInt(p *KernelParams) float64      { return float64(k) * p.U }
 func (k testKernel) IsDirichlet(xs []float64) (bool, float64) { return false, 0 }
 
-func TestElement2D_Integrate(t *testing.T) {
+func TestElement2D_IntegrateBoundary(t *testing.T) {
 	tests := []struct {
 		X1, Y1, V1 float64
 		X2, Y2, V2 float64
@@ -104,7 +104,7 @@ func TestElement2D_Integrate(t *testing.T) {
 		nds[3].Set(test.V4, 1)
 
 		var kconst constKernel = 1
-		val := elem.IntegrateStiffness(kconst, 0, 0)
+		val := elem.integrateBoundary(kconst, 0, 0)
 		t.Logf("     case %v", i+1)
 		if val != test.WantConst {
 			t.Errorf("    FAIL const kernel: got %v want %v", val, test.WantConst)

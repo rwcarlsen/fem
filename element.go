@@ -89,63 +89,45 @@ func (e *Element1D) left() float64  { return e.nodes[0].X()[0] }
 func (e *Element1D) right() float64 { return e.nodes[len(e.nodes)-1].X()[0] }
 
 func (e *Element1D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
-	w, u := e.nodes[wNode], e.nodes[uNode]
-
-	fn := func(x float64) float64 {
-		xs := []float64{x}
-		pars := &KernelParams{
-			X: xs, U: u.Sample(xs), W: w.Weight(xs),
-			GradU: u.DerivSample(xs),
-			GradW: w.DerivWeight(xs),
-		}
-		return k.VolIntU(pars)
-	}
-	volU := quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
-
-	x1 := []float64{e.left()}
-	x2 := []float64{e.right()}
-	pars1 := &KernelParams{
-		X: x1, U: u.Sample(x1), W: w.Weight(x1),
-		GradU: u.DerivSample(x1),
-		GradW: w.DerivWeight(x1),
-	}
-	pars2 := &KernelParams{
-		X: x2, U: u.Sample(x2), W: w.Weight(x2),
-		GradU: u.DerivSample(x2),
-		GradW: w.DerivWeight(x2),
-	}
-	boundU1 := k.BoundaryIntU(pars1)
-	boundU2 := k.BoundaryIntU(pars2)
-	return volU + boundU1 + boundU2
+	return e.integrateVol(k, wNode, uNode) + e.integrateBoundary(k, wNode, uNode)
 }
 
 func (e *Element1D) IntegrateForce(k Kernel, wNode int) float64 {
-	w := e.nodes[wNode]
+	return e.integrateVol(k, wNode, -1) + e.integrateBoundary(k, wNode, -1)
+}
 
-	fn := func(x float64) float64 {
-		xvec := []float64{x}
-		pars := &KernelParams{
-			X: xvec, U: 0, W: w.Weight(xvec),
-			GradW: w.DerivWeight(xvec),
-		}
-		return k.VolInt(pars)
-	}
-	vol := quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
-
+func (e *Element1D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
+	var w, u Node = e.nodes[wNode], nil
 	x1 := []float64{e.left()}
 	x2 := []float64{e.right()}
-	pars1 := &KernelParams{
-		X: x1, U: 0, W: w.Weight(x1),
-		GradW: w.DerivWeight(x1),
-	}
-	pars2 := &KernelParams{
-		X: x2, U: 0, W: w.Weight(x2),
-		GradW: w.DerivWeight(x2),
-	}
-	bound1 := k.BoundaryInt(pars1)
-	bound2 := k.BoundaryInt(pars2)
+	pars1 := &KernelParams{X: x1, W: w.Weight(x1), GradW: w.DerivWeight(x1)}
+	pars2 := &KernelParams{X: x2, W: w.Weight(x2), GradW: w.DerivWeight(x2)}
 
-	return vol + bound1 + bound2
+	if uNode < 0 {
+		return k.BoundaryInt(pars1) + k.BoundaryInt(pars2)
+	}
+	u = e.nodes[uNode]
+	pars1.U = u.Sample(x1)
+	pars1.GradU = u.DerivSample(x1)
+	pars2.U = u.Sample(x2)
+	pars2.GradU = u.DerivSample(x2)
+	return k.BoundaryIntU(pars1) + k.BoundaryIntU(pars2)
+}
+
+func (e *Element1D) integrateVol(k Kernel, wNode, uNode int) float64 {
+	fn := func(x float64) float64 {
+		xs := []float64{x}
+		var w, u Node = e.nodes[wNode], nil
+		pars := &KernelParams{X: xs, W: w.Weight(xs), GradW: w.DerivWeight(xs)}
+		if uNode < 0 {
+			return k.VolInt(pars)
+		}
+		u = e.nodes[uNode]
+		pars.U = u.Sample(xs)
+		pars.GradU = u.DerivSample(xs)
+		return k.VolIntU(pars)
+	}
+	return quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
 }
 
 // PrintFunc prints the element value and derivative in tab-separated form
@@ -238,49 +220,11 @@ func (e *Element2D) Contains(x []float64) bool {
 	return -1 <= xx && xx <= 1 && -1 <= yy && yy <= 1
 }
 
-func (e *Element2D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
-	w, u := e.nodes[wNode], e.nodes[uNode]
-
-	// volume integral
-	vol := 0.0
-
-	// boundary integral
-	fnFactory := func(iFree int, fixedVar float64) func(x float64) float64 {
-		xs := []float64{fixedVar, fixedVar}
-		en := []float64{fixedVar, fixedVar}
-		return func(x float64) float64 {
-			en[iFree] = x
-			ee, nn := en[0], en[1]
-			xs[0], xs[1] = e.trans.Transform(ee, nn)
-			jac := e.trans.Jacobian(ee, nn)
-			dxdfree := jac.At(iFree, 0)
-			dydfree := jac.At(iFree, 1)
-			pars := &KernelParams{X: xs, U: u.Sample(xs), GradU: u.DerivSample(xs), W: w.Weight(xs), GradW: w.DerivWeight(xs)}
-			// I really need the Reverse transform jacobian, but using the
-			// inverse here works for now:
-			return 1 / (dxdfree + dydfree) * k.BoundaryIntU(pars)
-		}
+func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
+	var w, u Node = e.nodes[wNode], nil
+	if uNode >= 0 {
+		u = e.nodes[uNode]
 	}
-
-	xFree, yFree := 0, 1
-	x1, x2, y1, y2 := -1.0, 1.0, -1.0, 1.0
-
-	bound := 0.0
-	bound += quad.Fixed(fnFactory(xFree, y1), x1, x2, 2, quad.Legendre{}, 0)
-	bound += quad.Fixed(fnFactory(xFree, y2), x1, x2, 2, quad.Legendre{}, 0)
-	bound += quad.Fixed(fnFactory(yFree, x1), y1, y2, 2, quad.Legendre{}, 0)
-	bound += quad.Fixed(fnFactory(yFree, x2), y1, y2, 2, quad.Legendre{}, 0)
-
-	return vol + bound
-}
-
-func (e *Element2D) IntegrateForce(k Kernel, wNode int) float64 {
-	w := e.nodes[wNode]
-
-	// volume integral
-	vol := 0.0
-
-	// boundary integral
 	fnFactory := func(iFree int, fixedVar float64) func(x float64) float64 {
 		xs := []float64{fixedVar, fixedVar}
 		en := []float64{fixedVar, fixedVar}
@@ -294,6 +238,11 @@ func (e *Element2D) IntegrateForce(k Kernel, wNode int) float64 {
 			pars := &KernelParams{X: xs, W: w.Weight(xs), GradW: w.DerivWeight(xs)}
 			// I really need the Reverse transform jacobian, but using the
 			// inverse here works for now:
+			if uNode < 0 {
+				return 1 / (dxdfree + dydfree) * k.BoundaryInt(pars)
+			}
+			pars.U = u.Sample(xs)
+			pars.GradU = u.DerivSample(xs)
 			return 1 / (dxdfree + dydfree) * k.BoundaryIntU(pars)
 		}
 	}
@@ -306,6 +255,17 @@ func (e *Element2D) IntegrateForce(k Kernel, wNode int) float64 {
 	bound += quad.Fixed(fnFactory(xFree, y2), x1, x2, 2, quad.Legendre{}, 0)
 	bound += quad.Fixed(fnFactory(yFree, x1), y1, y2, 2, quad.Legendre{}, 0)
 	bound += quad.Fixed(fnFactory(yFree, x2), y1, y2, 2, quad.Legendre{}, 0)
+	return bound
+}
 
-	return vol + bound
+func (e *Element2D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
+	return e.integrateVol(k, wNode, uNode) + e.integrateBoundary(k, wNode, uNode)
+}
+
+func (e *Element2D) IntegrateForce(k Kernel, wNode int) float64 {
+	return e.integrateVol(k, wNode, -1) + e.integrateBoundary(k, wNode, -1)
+}
+
+func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
+	return 0
 }
