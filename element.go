@@ -222,9 +222,6 @@ func (e *Element2D) Contains(x []float64) bool {
 
 func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	var w, u Node = e.nodes[wNode], nil
-	if uNode >= 0 {
-		u = e.nodes[uNode]
-	}
 	fnFactory := func(iFree int, fixedVar float64) func(x float64) float64 {
 		xs := []float64{fixedVar, fixedVar}
 		en := []float64{fixedVar, fixedVar}
@@ -232,15 +229,14 @@ func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 			en[iFree] = x
 			ee, nn := en[0], en[1]
 			xs[0], xs[1] = e.trans.Transform(ee, nn)
-			jac := e.trans.Jacobian(ee, nn)
+			jac := e.trans.ReverseJacobian(ee, nn)
 			dxdfree := jac.At(iFree, 0)
 			dydfree := jac.At(iFree, 1)
 			pars := &KernelParams{X: xs, W: w.Weight(xs), GradW: w.DerivWeight(xs)}
-			// I really need the Reverse transform jacobian, but using the
-			// inverse here works for now:
 			if uNode < 0 {
-				return 1 / (dxdfree + dydfree) * k.BoundaryInt(pars)
+				return (dxdfree + dydfree) * k.BoundaryInt(pars)
 			}
+			u = e.nodes[uNode]
 			pars.U = u.Sample(xs)
 			pars.GradU = u.DerivSample(xs)
 			return 1 / (dxdfree + dydfree) * k.BoundaryIntU(pars)
@@ -267,5 +263,23 @@ func (e *Element2D) IntegrateForce(k Kernel, wNode int) float64 {
 }
 
 func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
-	return 0
+	outer := func(ee float64) float64 {
+		inner := func(nn float64) float64 {
+			xs := make([]float64, 2)
+			xs[0], xs[1] = e.trans.Transform(ee, nn)
+			jacdet := e.trans.ReverseJacobianDet(ee, nn)
+
+			var w, u Node = e.nodes[wNode], nil
+			pars := &KernelParams{X: xs, W: w.Weight(xs), GradW: w.DerivWeight(xs)}
+			if uNode < 0 {
+				return jacdet * k.VolInt(pars)
+			}
+			u = e.nodes[uNode]
+			pars.U = u.Sample(xs)
+			pars.GradU = u.DerivSample(xs)
+			return jacdet * k.VolIntU(pars)
+		}
+		return quad.Fixed(inner, -1, 1, len(e.nodes), quad.Legendre{}, 0)
+	}
+	return quad.Fixed(outer, -1, 1, len(e.nodes), quad.Legendre{}, 0)
 }

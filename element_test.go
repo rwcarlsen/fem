@@ -1,6 +1,39 @@
 package main
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
+
+func TestGenBorder(t *testing.T) {
+	x1, y1 := 0., 0.
+	x2, y2 := 2., 0.
+	//x3, y3 := 1., 3.
+	x3, y3 := 1.1, 9.
+	x4, y4 := 0., 2.
+	elem, err := NewElementSimple2D(x1, y1, x2, y2, x3, y3, x4, y4)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nds := elem.Nodes()
+	nds[0].Set(1, 1)
+	nds[1].Set(2, 2)
+	nds[2].Set(1, 1)
+	nds[3].Set(1, 1)
+
+	for i := -1.0; i <= 1.0; i += 0.1 {
+		e, n := i, -1.0
+		x, y := nds[0].(*BilinQuadNode).Transform.Transform(e, n)
+		xs := []float64{x, y}
+
+		val := nds[0].Sample(xs)
+		val += nds[1].Sample(xs)
+		val += nds[2].Sample(xs)
+		val += nds[3].Sample(xs)
+		fmt.Printf("%v\t%v\t%v\t%v\t%v\n", e, n, val, x, y)
+	}
+}
 
 func TestElement1D(t *testing.T) {
 	tests := []struct {
@@ -50,36 +83,60 @@ func (k testKernel) BoundaryInt(p *KernelParams) float64      { return float64(k
 func (k testKernel) IsDirichlet(xs []float64) (bool, float64) { return false, 0 }
 
 func TestElement2D_IntegrateBoundary(t *testing.T) {
+	const volume = 1
+	const boundary = 2
 	tests := []struct {
 		X1, Y1, V1 float64
 		X2, Y2, V2 float64
 		X3, Y3, V3 float64
 		X4, Y4, V4 float64
 
+		Integral  int
 		WantConst float64
 		WantU1    float64
 		WantU2    float64
 		WantU3    float64
 		WantU4    float64
 	}{
-		{
-			X1: 0, Y1: 0, X2: 1, Y2: 0, X3: 1, Y3: 1, X4: 0, Y4: 1,
+		{ // scale+translate
+			Integral: boundary,
+			X1:       0, Y1: 0, X2: 1, Y2: 0, X3: 1, Y3: 1, X4: 0, Y4: 1,
 			V1: 1, V2: 1, V3: 1, V4: 1,
 			WantConst: 4,
 			WantU1:    1,
 			WantU2:    1,
 			WantU3:    1,
 			WantU4:    1,
-		}, {
-			X1: 0, Y1: 0, X2: 2, Y2: 0, X3: 2, Y3: 2, X4: 0, Y4: 2,
+		}, { // translate
+			Integral: boundary,
+			X1:       0, Y1: 0, X2: 2, Y2: 0, X3: 2, Y3: 2, X4: 0, Y4: 2,
 			V1: 1, V2: 1, V3: 1, V4: 1,
 			WantConst: 8,
 			WantU1:    2,
 			WantU2:    2,
 			WantU3:    2,
 			WantU4:    2,
-		}, {
-			X1: 0, Y1: 0, X2: 2, Y2: 0, X3: 2, Y3: 2, X4: 0, Y4: 2,
+		}, { // translate, scale, non-uniform node U values
+			Integral: boundary,
+			X1:       0, Y1: 0, X2: 2, Y2: 0, X3: 2, Y3: 2, X4: 0, Y4: 2,
+			V1: 1, V2: 2, V3: 2, V4: 1,
+			WantConst: 8,
+			WantU1:    2,
+			WantU2:    4,
+			WantU3:    4,
+			WantU4:    2,
+		}, { // translate, scale, distort
+			Integral: boundary,
+			X1:       0, Y1: 0, X2: 2, Y2: 0, X3: 1, Y3: 3, X4: 0, Y4: 2,
+			V1: 1, V2: 1, V3: 1, V4: 1,
+			WantConst: 8,
+			WantU1:    2,
+			WantU2:    4,
+			WantU3:    4,
+			WantU4:    2,
+		}, { // identity mapping
+			Integral: volume,
+			X1:       0, Y1: 0, X2: 2, Y2: 0, X3: 2, Y3: 2, X4: 0, Y4: 2,
 			V1: 1, V2: 2, V3: 2, V4: 1,
 			WantConst: 8,
 			WantU1:    2,
@@ -105,7 +162,10 @@ func TestElement2D_IntegrateBoundary(t *testing.T) {
 
 		var kconst constKernel = 1
 		val := elem.integrateBoundary(kconst, 0, 0)
-		t.Logf("     case %v", i+1)
+		if test.Integral == volume {
+			val = elem.integrateVol(kconst, 0, 0)
+		}
+		t.Logf("case %v", i+1)
 		if val != test.WantConst {
 			t.Errorf("    FAIL const kernel: got %v want %v", val, test.WantConst)
 		} else {
@@ -114,7 +174,10 @@ func TestElement2D_IntegrateBoundary(t *testing.T) {
 
 		var ku testKernel = 1
 		testu := func(j int, want float64) {
-			val = elem.IntegrateStiffness(ku, 0, j)
+			val := elem.integrateBoundary(ku, 0, j)
+			if test.Integral == volume {
+				val = elem.integrateVol(ku, 0, j)
+			}
 			if val != want {
 				t.Errorf("    FAIL u kernel node %v: got %v want %v", j, val, want)
 			} else {

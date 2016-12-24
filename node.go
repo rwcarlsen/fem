@@ -137,11 +137,11 @@ func (n *BilinQuadNode) Set(sample, weight float64) { n.U, n.W = sample, weight 
 
 func (n *BilinQuadNode) Sample(xv []float64) float64 {
 	x, y := xv[0], xv[1]
-	xx, yy := n.Transform.Reverse(x, y)
+	ee, nn := n.Transform.Reverse(x, y)
 
 	u := n.U
-	u *= (xx - 1) / (-1 - 1)
-	u *= (yy - 1) / (-1 - 1)
+	u *= (ee - 1) / (-1 - 1)
+	u *= (nn - 1) / (-1 - 1)
 	return u
 }
 

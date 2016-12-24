@@ -158,16 +158,28 @@ func (pt *ProjectiveTransform) JacobianDet(x, y float64) float64 {
 }
 
 func (pt *ProjectiveTransform) Jacobian(x, y float64) *mat64.Dense {
+	return pt.jacobian(pt.srcToDst, x, y)
+}
+
+func (pt *ProjectiveTransform) ReverseJacobianDet(x, y float64) float64 {
+	return mat64.Det(pt.ReverseJacobian(x, y))
+}
+
+func (pt *ProjectiveTransform) ReverseJacobian(x, y float64) *mat64.Dense {
+	return pt.jacobian(pt.dstToSrc, x, y)
+}
+
+func (pt *ProjectiveTransform) jacobian(trans *mat64.Dense, x, y float64) *mat64.Dense {
 	e, n := pt.Transform(x, y)
 	A := mat64.NewDense(4, 4, nil)
 
-	a1 := pt.srcToDst.At(0, 0)
-	a2 := pt.srcToDst.At(0, 1)
-	b1 := pt.srcToDst.At(1, 0)
-	b2 := pt.srcToDst.At(1, 1)
-	c1 := pt.srcToDst.At(2, 0)
-	c2 := pt.srcToDst.At(2, 1)
-	c3 := pt.srcToDst.At(2, 2)
+	a1 := trans.At(0, 0)
+	a2 := trans.At(0, 1)
+	b1 := trans.At(1, 0)
+	b2 := trans.At(1, 1)
+	c1 := trans.At(2, 0)
+	c2 := trans.At(2, 1)
+	c3 := trans.At(2, 2)
 
 	A.Set(0, 0, a1-c1*e)
 	A.Set(0, 1, a2)
