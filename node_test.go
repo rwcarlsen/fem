@@ -2,7 +2,60 @@ package main
 
 import "testing"
 
-func TestLagrange1D(t *testing.T) {
+func TestLagrange1D_Deriv(t *testing.T) {
+	tests := []struct {
+		Order   int
+		Index   int
+		SampleX float64
+		Want    float64
+	}{
+		////////// x1=-1, x2=1 ///////////
+		//            1
+		// dN/dx =  -----
+		//          x1-x2
+		{Order: 1, Index: 0, SampleX: -1., Want: -0.5},
+		{Order: 1, Index: 0, SampleX: 0.0, Want: -0.5},
+		{Order: 1, Index: 0, SampleX: 1.0, Want: -0.5},
+		//            1
+		// dN/dx =  -----
+		//          x2-x1
+		{Order: 1, Index: 1, SampleX: -1., Want: 0.5},
+		{Order: 1, Index: 1, SampleX: 0.0, Want: 0.5},
+		{Order: 1, Index: 1, SampleX: 1.0, Want: 0.5},
+
+		////////// x1=-1, x2=0, x3=1 ///////////
+		//          x-x2      1     x-x3      1
+		// dN/dx =  ----- * ----- + ----- * -----
+		//          x1-x2   x1-x3   x1-x3   x1-x2
+		{Order: 2, Index: 0, SampleX: -1., Want: -1.5},
+		{Order: 2, Index: 0, SampleX: 0.0, Want: -.5},
+		{Order: 2, Index: 0, SampleX: 1.0, Want: 0.5},
+		//          x-x1      1     x-x3      1
+		// dN/dx =  ----- * ----- + ----- * -----
+		//          x2-x1   x2-x3   x2-x3   x2-x1
+		{Order: 2, Index: 1, SampleX: -1., Want: 2.0},
+		{Order: 2, Index: 1, SampleX: 0.0, Want: 0.0},
+		{Order: 2, Index: 1, SampleX: 1.0, Want: -2.},
+		//          x-x1      1     x-x2      1
+		// dN/dx =  ----- * ----- + ----- * -----
+		//          x3-x1   x3-x2   x3-x2   x3-x1
+		{Order: 2, Index: 2, SampleX: -1., Want: -.5},
+		{Order: 2, Index: 2, SampleX: 0.0, Want: 0.5},
+		{Order: 2, Index: 2, SampleX: 1.0, Want: 1.5},
+	}
+
+	for i, test := range tests {
+		fn := Lagrange1D{test.Index, test.Order}
+		y := fn.Deriv([]float64{test.SampleX})[0]
+		if y != test.Want {
+			t.Errorf("FAIL case %v (order=%v, index=%v): df/dx(%v)=%v, want %v", i+1, test.Order, test.Index, test.SampleX, y, test.Want)
+		} else {
+			t.Logf("     case %v (order=%v, index=%v): df/dx(%v)=%v", i+1, test.Order, test.Index, test.SampleX, y)
+		}
+	}
+}
+
+func TestLagrange1D_Value(t *testing.T) {
 	tests := []struct {
 		Order   int
 		Index   int
