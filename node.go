@@ -6,16 +6,18 @@ import "errors"
 type Node interface {
 	// X returns the global/absolute position of the node.
 	X() []float64
-	// Sample returns the value of the node's shape/solution function at x.
-	Sample(x []float64) float64
-	// Weight returns the value of the node'd weight/test function at x.
-	Weight(x []float64) float64
+	// Sample returns the value of the node's shape/solution function at the reference point x (-1
+	// to 1).
+	Sample(refx []float64) float64
+	// Weight returns the value of the node'd weight/test function at the reference point x (-1 to
+	// 1).
+	Weight(refx []float64) float64
 	// DerivSample returns the partial derivative for each dimension
-	// of the node's shape function at x.
-	DerivSample(x []float64) []float64
+	// of the node's shape function at the reference point x (-1 to 1).
+	DerivSample(refx []float64) []float64
 	// DerivWeight returns the partial derivative for each dimension of
-	// the node's weight function at x.
-	DerivWeight(x []float64) []float64
+	// the node's weight function at the reference point x (-1 to 1).
+	DerivWeight(refx []float64) []float64
 	// Set normalizes the node's shape/solution and weight/test function to be
 	// equal to sample and weight at the node's position X().
 	Set(sample, weight float64)

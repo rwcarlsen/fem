@@ -11,7 +11,7 @@ import (
 // functionality required for approximating differential equation solutions.
 type Element interface {
 	// Nodes returns a persistent list of nodes that comprise this
-	// element in no particular order but in consistent order.
+	// element in no particular order but in stable/consistent order.
 	Nodes() []Node
 	// IntegrateStiffness returns the result of the integration terms of the
 	// weak form of the differential equation that include/depend on u(x) (the
@@ -114,9 +114,13 @@ func (e *Element1D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	return k.BoundaryIntU(pars1) + k.BoundaryIntU(pars2)
 }
 
+func (n *LagrangeNode) coord(refx float64) float64 {
+	return (e.left()*(1-refx) + e.right()*(1+refx)) / 2
+}
+
 func (e *Element1D) integrateVol(k Kernel, wNode, uNode int) float64 {
-	fn := func(x float64) float64 {
-		xs := []float64{x}
+	fn := func(ref float64) float64 {
+		xs := []float64{e.coord(ref)}
 		var w, u Node = e.nodes[wNode], nil
 		pars := &KernelParams{X: xs, W: w.Weight(xs), GradW: w.DerivWeight(xs)}
 		if uNode < 0 {
@@ -127,7 +131,7 @@ func (e *Element1D) integrateVol(k Kernel, wNode, uNode int) float64 {
 		pars.GradU = u.DerivSample(xs)
 		return k.VolIntU(pars)
 	}
-	return quad.Fixed(fn, e.left(), e.right(), len(e.nodes), quad.Legendre{}, 0)
+	return quad.Fixed(fn, -1, 1, len(e.nodes), quad.Legendre{}, 0)
 }
 
 // PrintFunc prints the element value and derivative in tab-separated form
