@@ -64,7 +64,9 @@ type Element1D struct {
 func NewElementSimple1D(xs []float64) *Element1D {
 	e := &Element1D{}
 	for i := range xs {
-		n := &Node{X: xs, U: 1.0, W: 1.0, ShapeFunc: Lagrange1D{Index: i, Order: len(xs) - 1}}
+		order := len(xs) - 1
+		nodepos := []float64{xs[i]}
+		n := &Node{X: nodepos, U: 1.0, W: 1.0, ShapeFunc: Lagrange1D{Index: i, Order: order}}
 		e.Nds = append(e.Nds, n)
 	}
 	return e
@@ -97,8 +99,8 @@ func (e *Element1D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	var w, u *Node = e.Nds[wNode], nil
 	x1 := []float64{e.left()}
 	x2 := []float64{e.right()}
-	pars1 := &KernelParams{X: x1, W: w.Weight(refLeft), GradW: w.WeightDeriv(refRight)}
-	pars2 := &KernelParams{X: x2, W: w.Weight(refLeft), GradW: w.WeightDeriv(refRight)}
+	pars1 := &KernelParams{X: x1, W: w.Weight(refLeft), GradW: w.WeightDeriv(refLeft)}
+	pars2 := &KernelParams{X: x2, W: w.Weight(refRight), GradW: w.WeightDeriv(refRight)}
 
 	if uNode < 0 {
 		return k.BoundaryInt(pars1) + k.BoundaryInt(pars2)
@@ -129,7 +131,7 @@ func (e *Element1D) integrateVol(k Kernel, wNode, uNode int) float64 {
 		pars.GradU = u.ValueDeriv(refxs)
 		return k.VolIntU(pars)
 	}
-	return quad.Fixed(fn, -1, 1, len(e.Nds), quad.Legendre{}, 0)
+	return quad.Fixed(fn, -1, 1, len(e.Nds), quad.Legendre{}, 0) * (e.right() - e.left()) / 2
 }
 
 // PrintFunc prints the element value and derivative in tab-separated form

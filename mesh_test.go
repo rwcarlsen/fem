@@ -65,12 +65,12 @@ func TestMeshSolve(t *testing.T) {
 			continue
 		}
 
-		for i, x := range test.Xs {
+		for j, x := range test.Xs {
 			y, err := mesh.Interpolate([]float64{x})
 			if err != nil {
 				t.Errorf("    FAIL f(%v)=??: %v", x, err)
-			} else if math.Abs(y-test.Want[i]) > tol {
-				t.Errorf("    FAIL f(%v)=%v, want %v", x, y, test.Want[i])
+			} else if math.Abs(y-test.Want[j]) > tol {
+				t.Errorf("    FAIL f(%v)=%v, want %v", x, y, test.Want[j])
 			} else {
 				t.Logf("         f(%v)=%v", x, y)
 			}

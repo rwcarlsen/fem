@@ -108,7 +108,9 @@ func (m *Mesh) Interpolate(x []float64) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return Interpolate(elem, x)
+
+	refx := make([]float64, len(x))
+	return Interpolate(elem, refx)
 }
 
 // reset renormalizes all the node shape functions in the mesh to one - i.e.
