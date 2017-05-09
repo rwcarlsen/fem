@@ -16,10 +16,10 @@ type Mesh struct {
 	// mesh.
 	Elems []Element
 	// nodeIndex maps all nodes to a global index/ID
-	nodeIndex map[Node]int
+	nodeIndex map[*Node]int
 	// indexNode maps all global node indices to a list of nodes at the
 	// corresponding position
-	indexNode map[int][]Node
+	indexNode map[int][]*Node
 	// box is a helper to speed up the identification of elements that enclose
 	// certain points in the mesh.  This helps lookups to be more performant.
 	box *Box
@@ -53,7 +53,7 @@ func (m *Mesh) finalize() {
 	ids := map[posHash]int{}
 	for _, e := range m.Elems {
 		for _, n := range e.Nodes() {
-			hx := hashX(n.X())
+			hx := hashX(n.X)
 			if id, ok := ids[hx]; ok {
 				m.nodeIndex[n] = id
 				m.indexNode[id] = append(m.indexNode[id], n)
@@ -84,7 +84,7 @@ func (m *Mesh) AddElement(e Element) error {
 // NewMeshSimple1D creates a simply-connected mesh with nodes at the specified
 // points and degree nodes per element.
 func NewMeshSimple1D(nodePos []float64, degree int) (*Mesh, error) {
-	m := &Mesh{nodeIndex: map[Node]int{}, indexNode: map[int][]Node{}}
+	m := &Mesh{nodeIndex: map[*Node]int{}, indexNode: map[int][]*Node{}}
 	if (len(nodePos)-1)%(degree-1) != 0 {
 		return nil, fmt.Errorf("incompatible mesh degree (%v) and node count (%v)", degree, len(nodePos))
 	}
@@ -116,7 +116,8 @@ func (m *Mesh) Interpolate(x []float64) (float64, error) {
 func (m *Mesh) reset() {
 	for _, e := range m.Elems {
 		for _, n := range e.Nodes() {
-			n.Set(1, 1)
+			n.U = 1
+			n.W = 1
 		}
 	}
 }
@@ -139,7 +140,8 @@ func (m *Mesh) Solve(k Kernel) error {
 	for i := 0; i < u.Len(); i++ {
 		nodes := m.indexNode[i]
 		for _, n := range nodes {
-			n.Set(u.At(i, 0), 1)
+			n.U = u.At(i, 0)
+			n.W = 1
 		}
 	}
 	return nil
@@ -156,7 +158,7 @@ func (m *Mesh) ForceMatrix(k Kernel) *mat64.Vector {
 	for e, elem := range m.Elems {
 		for i, n := range elem.Nodes() {
 			a := m.nodeId(e, i)
-			if ok, v := k.IsDirichlet(n.X()); ok {
+			if ok, v := k.IsDirichlet(n.X); ok {
 				mat.SetVec(a, v)
 				continue
 			}
@@ -182,7 +184,7 @@ func (m *Mesh) StiffnessMatrix(k Kernel) *mat64.Dense {
 				v := elem.IntegrateStiffness(k, i, j)
 				mat.Set(a, b, mat.At(a, b)+v)
 				mat.Set(b, a, mat.At(a, b))
-				if ok, _ := k.IsDirichlet(n.X()); ok {
+				if ok, _ := k.IsDirichlet(n.X); ok {
 					for c := 0; c < len(elem.Nodes()); c++ {
 						mat.Set(a, c, 0.0)
 					}

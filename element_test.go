@@ -1,39 +1,6 @@
 package main
 
-import (
-	"fmt"
-	"testing"
-)
-
-func TestGenBorder(t *testing.T) {
-	x1, y1 := 0., 0.
-	x2, y2 := 2., 0.
-	//x3, y3 := 1., 3.
-	x3, y3 := 1.1, 9.
-	x4, y4 := 0., 2.
-	elem, err := NewElementSimple2D(x1, y1, x2, y2, x3, y3, x4, y4)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	nds := elem.Nodes()
-	nds[0].Set(1, 1)
-	nds[1].Set(2, 2)
-	nds[2].Set(1, 1)
-	nds[3].Set(1, 1)
-
-	for i := -1.0; i <= 1.0; i += 0.1 {
-		e, n := i, -1.0
-		x, y := nds[0].(*BilinQuadNode).Transform.Transform(e, n)
-		xs := []float64{x, y}
-
-		val := nds[0].Sample(xs)
-		val += nds[1].Sample(xs)
-		val += nds[2].Sample(xs)
-		val += nds[3].Sample(xs)
-		fmt.Printf("%v\t%v\t%v\t%v\t%v\n", e, n, val, x, y)
-	}
-}
+import "testing"
 
 func TestElement1D(t *testing.T) {
 	tests := []struct {
@@ -53,7 +20,8 @@ func TestElement1D(t *testing.T) {
 	for i, test := range tests {
 		elem := NewElementSimple1D(test.Xs)
 		for i, n := range elem.Nodes() {
-			n.Set(test.Ys[i], 1)
+			n.U = test.Ys[i]
+			n.W = 1
 		}
 		y, err := Interpolate(elem, []float64{test.SampleX})
 		if err != nil {
