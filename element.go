@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"math"
 
 	"github.com/gonum/integrate/quad"
 )
@@ -25,15 +26,42 @@ type Element interface {
 	Bounds() (low, up []float64)
 	// Contains returns true if x is inside this element and false otherwise.
 	Contains(x []float64) bool
+	// Coord returns the actual coordinates in the element for the given reference coordinates
+	// (between -1 and 1).
+	Coord(refx []float64) []float64
 }
 
 // Interpolate returns the (approximated) value of the function within the
 // element at position x.  An error is returned if x is not contained inside
 // the element.
-func Interpolate(e Element, refx []float64) (float64, error) {
+func Interpolate(e Element, x []float64) (float64, error) {
+	dims := make([]int, len(x))
+	ntry := 100
+	for i := range dims {
+		dims[i] = ntry
+	}
+	convert := func(perm []int) []float64 {
+		x := make([]float64, len(perm))
+		for i := range x {
+			x[i] = -1 + 2*float64(i)/(float64(ntry)-1)
+		}
+		return x
+	}
+
+	perms := Permute(nil, dims...)
+	best := make([]float64, len(x))
+	bestnorm := math.Inf(1)
+	for _, p := range perms {
+		if norm := vecL2Norm(vecSub(x, convert(p))); norm < bestnorm {
+			best = convert(p)
+			bestnorm = norm
+		}
+	}
+
+	fmt.Println("best=", best)
 	u := 0.0
 	for _, n := range e.Nodes() {
-		u += n.Value(refx)
+		u += n.Value(best)
 	}
 	return u, nil
 }
@@ -113,14 +141,14 @@ func (e *Element1D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	return k.BoundaryIntU(pars1) + k.BoundaryIntU(pars2)
 }
 
-func (e *Element1D) coord(refx float64) float64 {
-	return (e.left()*(1-refx) + e.right()*(1+refx)) / 2
+func (e *Element1D) Coord(refx []float64) []float64 {
+	return []float64{(e.left()*(1-refx[0]) + e.right()*(1+refx[0])) / 2}
 }
 
 func (e *Element1D) integrateVol(k Kernel, wNode, uNode int) float64 {
 	fn := func(ref float64) float64 {
 		refxs := []float64{ref}
-		xs := []float64{e.coord(ref)}
+		xs := e.Coord(refxs)
 		var w, u *Node = e.Nds[wNode], nil
 		pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: w.WeightDeriv(refxs)}
 		if uNode < 0 {
@@ -144,7 +172,7 @@ func (e *Element1D) PrintFunc(w io.Writer, nsamples int) {
 	drefx := 2 / (float64(nsamples) - 1)
 	for i := 0; i < nsamples; i++ {
 		refx := []float64{-1 + float64(i)*drefx}
-		x := e.coord(refx[0])
+		x := e.Coord(refx)[0]
 
 		v, err := Interpolate(e, refx)
 		if err != nil {
@@ -168,7 +196,7 @@ func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
 	drefx := 2 / (float64(nsamples) - 1)
 	for i := 0; i < nsamples; i++ {
 		refx := []float64{-1 + float64(i)*drefx}
-		x := e.coord(refx[0])
+		x := e.Coord(refx)[0]
 		fmt.Fprintf(w, "%v", x)
 		for _, n := range e.Nds {
 			if x < e.left() || x > e.right() {
