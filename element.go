@@ -165,39 +165,41 @@ func (e *Element1D) IntegrateForce(k Kernel, wNode int) float64 {
 func (e *Element1D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	var refLeft = []float64{-1}
 	var refRight = []float64{1}
+	mult := (e.right() - e.left()) / 2
 
 	var w, u *Node = e.Nds[wNode], nil
 	x1 := []float64{e.left()}
 	x2 := []float64{e.right()}
-	pars1 := &KernelParams{X: x1, W: w.Weight(refLeft), GradW: w.WeightDeriv(refLeft)}
-	pars2 := &KernelParams{X: x2, W: w.Weight(refRight), GradW: w.WeightDeriv(refRight)}
+	pars1 := &KernelParams{X: x1, W: w.Weight(refLeft), GradW: vecMult(w.WeightDeriv(refLeft), 1/mult)}
+	pars2 := &KernelParams{X: x2, W: w.Weight(refRight), GradW: vecMult(w.WeightDeriv(refRight), 1/mult)}
 
 	if uNode < 0 {
 		return k.BoundaryInt(pars1) + k.BoundaryInt(pars2)
 	}
 	u = e.Nds[uNode]
 	pars1.U = u.Value(refLeft)
-	pars1.GradU = u.ValueDeriv(refLeft)
+	pars1.GradU = vecMult(u.ValueDeriv(refLeft), 1/mult)
 	pars2.U = u.Value(refRight)
-	pars2.GradU = u.ValueDeriv(refRight)
+	pars2.GradU = vecMult(u.ValueDeriv(refRight), 1/mult)
 	return k.BoundaryIntU(pars1) + k.BoundaryIntU(pars2)
 }
 
 func (e *Element1D) integrateVol(k Kernel, wNode, uNode int) float64 {
+	mult := (e.right() - e.left()) / 2
 	fn := func(ref float64) float64 {
 		refxs := []float64{ref}
 		xs := e.Coord(refxs)
 		var w, u *Node = e.Nds[wNode], nil
-		pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: w.WeightDeriv(refxs)}
+		pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: vecMult(w.WeightDeriv(refxs), 1/mult)}
 		if uNode < 0 {
 			return k.VolInt(pars)
 		}
 		u = e.Nds[uNode]
 		pars.U = u.Value(refxs)
-		pars.GradU = u.ValueDeriv(refxs)
+		pars.GradU = vecMult(u.ValueDeriv(refxs), 1/mult)
 		return k.VolIntU(pars)
 	}
-	return quad.Fixed(fn, -1, 1, len(e.Nds), quad.Legendre{}, 0) * (e.right() - e.left()) / 2
+	return quad.Fixed(fn, -1, 1, len(e.Nds), quad.Legendre{}, 0) * mult
 }
 
 // PrintFunc prints the element value and derivative in tab-separated form

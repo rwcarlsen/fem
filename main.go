@@ -10,6 +10,7 @@ import (
 
 var printmats = flag.Bool("print", false, "print stiffness and force matrices")
 var nnodes = flag.Int("nodes", 5, "number of nodes/domain divisions-1")
+var order = flag.Int("order", 2, "lagrange shape function order")
 
 func main() {
 	log.SetFlags(0)
@@ -18,7 +19,6 @@ func main() {
 }
 
 func TestHeatKernel() {
-	order := 2
 	xs := []float64{}
 	for i := 0; i < *nnodes; i++ {
 		xs = append(xs, float64(i)/float64(*nnodes-1)*4)
@@ -36,7 +36,7 @@ func TestHeatKernel() {
 			RightType: Neumann,
 		},
 	}
-	mesh, err := NewMeshSimple1D(hc.X, order)
+	mesh, err := NewMeshSimple1D(hc.X, *order)
 	if err != nil {
 		log.Fatal(err)
 	}

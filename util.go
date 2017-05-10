@@ -69,6 +69,13 @@ func vecL2Norm(vec []float64) float64 {
 	return math.Sqrt(tot)
 }
 
+func vecMult(v []float64, mult float64) []float64 {
+	for i := range v {
+		v[i] *= mult
+	}
+	return v
+}
+
 func vecSub(a, b []float64) []float64 {
 	if len(a) != len(b) {
 		panic("inconsistent lengths for vector subtraction")

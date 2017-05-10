@@ -40,6 +40,16 @@ func TestMeshSolve(t *testing.T) {
 			Right:    Neumann,
 			RightVal: 5,
 			Want:     []float64{0, 85, 145, 180, 190},
+		}, {
+			Order:    2, // quadratic
+			Xs:       []float64{0, 2, 4},
+			K:        2,
+			S:        50,
+			Left:     Dirichlet,
+			LeftVal:  0,
+			Right:    Neumann,
+			RightVal: 5,
+			Want:     []float64{0, 145, 190},
 		},
 	}
 

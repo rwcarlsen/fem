@@ -16,7 +16,9 @@ func (n *Node) Set(u, w float64) {
 	n.W = w
 }
 
-func (n *Node) Value(refx []float64) float64  { return n.ShapeFunc.Value(refx) * n.U }
+func (n *Node) Value(refx []float64) float64 {
+	return n.ShapeFunc.Value(refx) * n.U
+}
 func (n *Node) Weight(refx []float64) float64 { return n.ShapeFunc.Value(refx) * n.W }
 func (n *Node) ValueDeriv(refx []float64) []float64 {
 	d := n.ShapeFunc.Deriv(refx)
@@ -28,7 +30,7 @@ func (n *Node) ValueDeriv(refx []float64) []float64 {
 func (n *Node) WeightDeriv(refx []float64) []float64 {
 	d := n.ShapeFunc.Deriv(refx)
 	for i := range d {
-		d[i] *= n.U
+		d[i] *= n.W
 	}
 	return d
 }
