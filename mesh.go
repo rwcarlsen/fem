@@ -168,14 +168,14 @@ func (m *Mesh) SolveIter(k Kernel, maxiter int, l2tol float64) (iter int, err er
 	soln := mat64.NewVector(m.NumDOF(), nil)
 
 	n := 0
-	acceleration := 1.5 // between 1.0 and 2.0
+	acceleration := 1.0 // between 1.0 and 2.0
 	for ; n < maxiter; n++ {
 		for i := 0; i < m.NumDOF(); i++ {
 			row := m.StiffnessRow(k, i)
 			xold := soln.At(i, 0)
-			//soln.SetVec(i, 0)
-			xnew := xold + acceleration/row.At(i, 0)*(b.At(i, 0)-mat64.Dot(row, soln))
-			//xnew := xold + acceleration/row.At(i, 0)*(b.At(i, 0)-mat64.Dot(row, soln))
+			soln.SetVec(i, 0)
+			//xnew := (1-acceleration)*xold + acceleration/row.At(i, 0)*(b.At(i, 0)-mat64.Dot(row, soln))
+			xnew := (1-acceleration)*xold + acceleration/row.At(i, 0)*(b.At(i, 0)-mat64.Dot(row, soln))
 			soln.SetVec(i, xnew)
 		}
 
