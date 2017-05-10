@@ -85,18 +85,19 @@ func (m *Mesh) AddElement(e Element) error {
 }
 
 // NewMeshSimple1D creates a simply-connected mesh with nodes at the specified
-// points and degree nodes per element.
-func NewMeshSimple1D(nodePos []float64, degree int) (*Mesh, error) {
+// points and order specifies the polynomial shape function order used in each element to
+// approximate the solution.
+func NewMeshSimple1D(nodePos []float64, order int) (*Mesh, error) {
 	m := &Mesh{nodeIndex: map[*Node]int{}, indexNode: map[int][]*Node{}}
-	if (len(nodePos)-1)%(degree-1) != 0 {
-		return nil, fmt.Errorf("incompatible mesh degree (%v) and node count (%v)", degree, len(nodePos))
+	if (len(nodePos)-1)%order != 0 {
+		return nil, fmt.Errorf("incompatible mesh order (%v) and node count (%v)", order, len(nodePos))
 	}
 
-	nElems := (len(nodePos) - 1) / (degree - 1)
+	nElems := (len(nodePos) - 1) / order
 	for i := 0; i < nElems; i++ {
-		xs := make([]float64, degree)
-		for j := 0; j < degree; j++ {
-			xs[j] = nodePos[i*(degree-1)+j]
+		xs := make([]float64, order+1)
+		for j := 0; j < order+1; j++ {
+			xs[j] = nodePos[i*order+j]
 		}
 		m.AddElement(NewElementSimple1D(xs))
 	}
