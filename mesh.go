@@ -73,6 +73,8 @@ func (m *Mesh) finalize() {
 	m.box = NewBox(m.Elems, 10, 10)
 }
 
+func (m *Mesh) NumDOF() int { return len(m.indexNode) }
+
 // AddElement is for adding custom-built elements to a mesh.  When all
 // elements have been added.  Elements must form a single, contiguous domain
 // (i.e.  with no holes/gaps).
@@ -158,13 +160,53 @@ func (m *Mesh) Solve(k Kernel) error {
 	return nil
 }
 
+func (m *Mesh) SolveIter(k Kernel, maxiter int, l2tol float64) (iter int, err error) {
+	m.reset()
+	b := m.ForceMatrix(k)
+
+	prev := mat64.NewVector(m.NumDOF(), nil)
+	soln := mat64.NewVector(m.NumDOF(), nil)
+
+	n := 0
+	acceleration := 1.5 // between 1.0 and 2.0
+	for ; n < maxiter; n++ {
+		for i := 0; i < m.NumDOF(); i++ {
+			row := m.StiffnessRow(k, i)
+			xold := soln.At(i, 0)
+			//soln.SetVec(i, 0)
+			xnew := xold + acceleration/row.At(i, 0)*(b.At(i, 0)-mat64.Dot(row, soln))
+			//xnew := xold + acceleration/row.At(i, 0)*(b.At(i, 0)-mat64.Dot(row, soln))
+			soln.SetVec(i, xnew)
+		}
+
+		var diff mat64.Vector
+		diff.SubVec(soln, prev)
+		// we only care about norm/error proportional to number of nodes/DOF because twice as many
+		// nodes makes the norm twice as big for the same actual error - which we don't want - so
+		// scale to number of DOF.
+		if l2 := mat64.Norm(&diff, 1) / float64(m.NumDOF()); l2 < l2tol {
+			break
+		}
+		prev.CloneVec(soln)
+	}
+
+	for i := 0; i < soln.Len(); i++ {
+		nodes := m.indexNode[i]
+		for _, n := range nodes {
+			n.U = soln.At(i, 0)
+			n.W = 1
+		}
+	}
+	return n, nil
+}
+
 // ForceMatrix builds the matrix with one entry for each node representing the
 // result of the integration terms of the weak form of the differential
 // equation in k that do *not* include/depend on u(x).  This is the f column
 // vector in the equation the K*u=f.
 func (m *Mesh) ForceMatrix(k Kernel) *mat64.Vector {
 	m.finalize()
-	size := len(m.indexNode)
+	size := m.NumDOF()
 	mat := mat64.NewVector(size, nil)
 	for e, elem := range m.Elems {
 		for i, n := range elem.Nodes() {
@@ -180,13 +222,37 @@ func (m *Mesh) ForceMatrix(k Kernel) *mat64.Vector {
 	return mat
 }
 
+func (m *Mesh) StiffnessRow(k Kernel, row int) *mat64.Vector {
+	m.finalize()
+	size := m.NumDOF()
+	mat := mat64.NewVector(size, nil)
+	for e, elem := range m.Elems {
+		for i, n := range elem.Nodes() {
+			a := m.nodeId(e, i)
+			if a != row {
+				continue
+			} else if ok, _ := k.IsDirichlet(n.X); ok {
+				mat.SetVec(row, 1.0)
+				return mat
+			}
+
+			for j := 0; j < len(elem.Nodes()); j++ {
+				b := m.nodeId(e, j)
+				v := elem.IntegrateStiffness(k, i, j)
+				mat.SetVec(b, mat.At(b, 0)+v)
+			}
+		}
+	}
+	return mat
+}
+
 // StiffnessMatrix builds the matrix with one entry for each combination of
 // node test and weight functions representing the result of the integration
 // terms of the weak form of the differential equation in k that
 // include/depend on u(x).  This is the K matrix in the equation the K*u=f.
 func (m *Mesh) StiffnessMatrix(k Kernel) *mat64.Dense {
 	m.finalize()
-	size := len(m.indexNode)
+	size := m.NumDOF()
 	mat := mat64.NewDense(size, size, nil)
 	for e, elem := range m.Elems {
 		for i, n := range elem.Nodes() {

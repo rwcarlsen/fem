@@ -11,6 +11,8 @@ import (
 var printmats = flag.Bool("print", false, "print stiffness and force matrices")
 var nnodes = flag.Int("nodes", 5, "number of nodes/domain divisions-1")
 var order = flag.Int("order", 2, "lagrange shape function order")
+var iter = flag.Int("iter", -1, "number of iterations for solve (default=direct)")
+var l2tol = flag.Float64("tol", 1e-6, "l2 norm consecutive iterative soln diff threshold")
 
 func main() {
 	log.SetFlags(0)
@@ -48,9 +50,17 @@ func TestHeatKernel() {
 		fmt.Printf("force:\n%v\n", mat64.Formatted(force))
 	}
 
-	err = mesh.Solve(hc)
-	if err != nil {
-		log.Fatal(err)
+	if *iter < 1 {
+		err = mesh.Solve(hc)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		iter, err := mesh.SolveIter(hc, *iter, *l2tol)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("converged after %v iterations", iter)
 	}
 
 	fmt.Println("Solution:")
