@@ -23,10 +23,8 @@ func TestElement1D(t *testing.T) {
 			n.U = test.Ys[i]
 			n.W = 1
 		}
-		y, err := Interpolate(elem, []float64{test.SampleX})
-		if err != nil {
-			t.Errorf("FAIL case %v (xs=%v, ys=%v): %v", i+1, test.Xs, test.Ys, err)
-		} else if y != test.Want {
+		y := Interpolate(elem, []float64{test.SampleX})
+		if y != test.Want {
 			t.Errorf("FAIL case %v (xs=%v, ys=%v): f(%v)=%v, want %v", i+1, test.Xs, test.Ys, test.SampleX, y, test.Want)
 		} else {
 			t.Logf("     case %v (xs=%v, ys=%v): f(%v)=%v", i+1, test.Xs, test.Ys, test.SampleX, y)

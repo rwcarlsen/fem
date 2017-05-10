@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/gonum/integrate/quad"
+	"github.com/gonum/optimize"
 )
 
 // Element represents an element and provides integration and bounds related
@@ -31,46 +32,83 @@ type Element interface {
 	Coord(refx []float64) []float64
 }
 
-// Interpolate returns the (approximated) value of the function within the
-// element at position x.  An error is returned if x is not contained inside
-// the element.
-func Interpolate(e Element, x []float64) (float64, error) {
-	dims := make([]int, len(x))
-	ntry := 100
-	for i := range dims {
-		dims[i] = ntry
-	}
-	convert := func(perm []int) []float64 {
-		x := make([]float64, len(perm))
-		for i := range x {
-			x[i] = -1 + 2*float64(i)/(float64(ntry)-1)
-		}
-		return x
-	}
+// Converter represents functions that can generate/provide the (approximate) reference
+// coordinates for a given real coordinate on element e.
+type Converter func(e Element, x []float64) (refx []float64, err error)
 
-	perms := Permute(nil, dims...)
-	best := make([]float64, len(x))
-	bestnorm := math.Inf(1)
-	for _, p := range perms {
-		if norm := vecL2Norm(vecSub(x, convert(p))); norm < bestnorm {
-			best = convert(p)
-			bestnorm = norm
+// PermConverter generates an element converter function which returns the (approximated)
+// reference coordinates of within an element for real coordinate position x.  An error is
+// returned if x is not contained inside the element.  The returned converter divides each
+// dimension into ndiv segments forming a multi-dimensional grid over the element's reference
+// coordinate domain.  Each grid point will be checked and the grid point corresponding to a real
+// coordinate closest to x will be returned.
+func PermConverter(ndiv int) Converter {
+	return func(e Element, x []float64) ([]float64, error) {
+		if !e.Contains(x) {
+			return nil, fmt.Errorf("cannot convert coordinates - element does not contain X=%v", x)
 		}
-	}
+		dims := make([]int, len(x))
+		for i := range dims {
+			dims[i] = ndiv
+		}
+		convert := func(perm []int) []float64 {
+			x := make([]float64, len(perm))
+			for i := range x {
+				x[i] = -1 + 2*float64(perm[i])/(float64(ndiv)-1)
+			}
+			return x
+		}
 
-	fmt.Println("best=", best)
-	u := 0.0
-	for _, n := range e.Nodes() {
-		u += n.Value(best)
+		perms := Permute(nil, dims...)
+		best := make([]float64, len(x))
+		bestnorm := math.Inf(1)
+		for _, p := range perms {
+			norm := vecL2Norm(vecSub(x, e.Coord(convert(p))))
+			if norm < bestnorm {
+				best = convert(p)
+				bestnorm = norm
+			}
+		}
+		return best, nil
 	}
-	return u, nil
 }
 
-// Deriv returns the partial derivatives of the element at x for each
-// dimension - i.e. the superposition of partial derivatives from each of the
-// element nodes. An error is returned if x is not contained inside the
-// element.
-func Deriv(e Element, refx []float64) ([]float64, error) {
+// OptimConverter performs a local optimization using vanilla algorithms (e.g. gradient descent,
+// , newton, etc.) to find the reference coordinates for x.
+func OptimConverter(e Element, x []float64) ([]float64, error) {
+	if !e.Contains(x) {
+		return nil, fmt.Errorf("cannot convert coordinates - element does not contain X=%v", x)
+	}
+
+	p := optimize.Problem{
+		Func: func(trial []float64) float64 {
+			return vecL2Norm(vecSub(x, e.Coord(trial)))
+		},
+	}
+
+	initial := make([]float64, len(x))
+	result, err := optimize.Local(p, initial, nil, nil)
+	if err != nil {
+		return nil, err
+	} else if err = result.Status.Err(); err != nil {
+		return nil, err
+	}
+	return result.X, nil
+}
+
+// Interpolate returns the solution of the element at refx (reference coordinates [-1,1]).
+func Interpolate(e Element, refx []float64) float64 {
+	u := 0.0
+	for _, n := range e.Nodes() {
+		u += n.Value(refx)
+	}
+	return u
+}
+
+// InterpolateDeriv returns the partial derivatives of the element at refx (reference coordinates
+// [-1,1]) for each dimension - i.e. the superposition of partial derivatives from each of the
+// element nodes.
+func InterpolateDeriv(e Element, refx []float64) []float64 {
 	u := e.Nodes()[0].ValueDeriv(refx)
 	for _, n := range e.Nodes()[1:] {
 		subu := n.ValueDeriv(refx)
@@ -78,7 +116,7 @@ func Deriv(e Element, refx []float64) ([]float64, error) {
 			u[i] += subu[i]
 		}
 	}
-	return u, nil
+	return u
 }
 
 // Element1D represents a 1D finite element.  It assumes len(x) == 1 (i.e.
@@ -107,6 +145,10 @@ func (e *Element1D) Nodes() []*Node { return e.Nds }
 func (e *Element1D) Contains(x []float64) bool {
 	xx := x[0]
 	return e.left() <= xx && xx <= e.right()
+}
+
+func (e *Element1D) Coord(refx []float64) []float64 {
+	return []float64{(e.left()*(1-refx[0]) + e.right()*(1+refx[0])) / 2}
 }
 
 func (e *Element1D) left() float64  { return e.Nds[0].X[0] }
@@ -141,10 +183,6 @@ func (e *Element1D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	return k.BoundaryIntU(pars1) + k.BoundaryIntU(pars2)
 }
 
-func (e *Element1D) Coord(refx []float64) []float64 {
-	return []float64{(e.left()*(1-refx[0]) + e.right()*(1+refx[0])) / 2}
-}
-
 func (e *Element1D) integrateVol(k Kernel, wNode, uNode int) float64 {
 	fn := func(ref float64) float64 {
 		refxs := []float64{ref}
@@ -174,14 +212,8 @@ func (e *Element1D) PrintFunc(w io.Writer, nsamples int) {
 		refx := []float64{-1 + float64(i)*drefx}
 		x := e.Coord(refx)[0]
 
-		v, err := Interpolate(e, refx)
-		if err != nil {
-			panic(err)
-		}
-		d, err := Deriv(e, refx)
-		if err != nil {
-			panic(err)
-		}
+		v := Interpolate(e, refx)
+		d := InterpolateDeriv(e, refx)
 		fmt.Fprintf(w, "%v\t%v\t%v\n", x, v, d[0])
 	}
 }

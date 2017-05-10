@@ -23,6 +23,9 @@ type Mesh struct {
 	// box is a helper to speed up the identification of elements that enclose
 	// certain points in the mesh.  This helps lookups to be more performant.
 	box *Box
+	// Conv is the coordinate conversion function/logic used for calculating solutions at
+	// arbitrary points on the mesh.
+	Conv Converter
 }
 
 // nodeId returns the global node id for the given element index and its local
@@ -104,13 +107,18 @@ func NewMeshSimple1D(nodePos []float64, degree int) (*Mesh, error) {
 // Solve must have been called before this for it to return meaningful
 // results.
 func (m *Mesh) Interpolate(x []float64) (float64, error) {
+	if m.Conv == nil {
+		m.Conv = OptimConverter
+	}
 	elem, err := m.box.Find(x)
 	if err != nil {
 		return 0, err
 	}
-
-	refx := make([]float64, len(x))
-	return Interpolate(elem, refx)
+	refx, err := m.Conv(elem, x)
+	if err != nil {
+		return 0, err
+	}
+	return Interpolate(elem, refx), nil
 }
 
 // reset renormalizes all the node shape functions in the mesh to one - i.e.
