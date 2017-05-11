@@ -12,7 +12,7 @@ var printmats = flag.Bool("print", false, "print stiffness and force matrices")
 var nnodes = flag.Int("nodes", 5, "number of nodes/domain divisions-1")
 var order = flag.Int("order", 2, "lagrange shape function order")
 var iter = flag.Int("iter", -1, "number of iterations for solve (default=direct)")
-var l2tol = flag.Float64("tol", 1e-6, "l2 norm consecutive iterative soln diff threshold")
+var l2tol = flag.Float64("tol", 1e-5, "l2 norm consecutive iterative soln diff threshold")
 
 func main() {
 	log.SetFlags(0)

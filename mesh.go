@@ -160,7 +160,7 @@ func (m *Mesh) Solve(k Kernel) error {
 	return nil
 }
 
-func (m *Mesh) SolveIter(k Kernel, maxiter int, l2tol float64) (iter int, err error) {
+func (m *Mesh) SolveIter(k Kernel, maxiter int, tol float64) (iter int, err error) {
 	m.reset()
 	b := m.ForceMatrix(k)
 
@@ -168,13 +168,12 @@ func (m *Mesh) SolveIter(k Kernel, maxiter int, l2tol float64) (iter int, err er
 	soln := mat64.NewVector(m.NumDOF(), nil)
 
 	n := 0
-	acceleration := 1.0 // between 1.0 and 2.0
+	acceleration := 1.7 // between 1.0 and 2.0
 	for ; n < maxiter; n++ {
 		for i := 0; i < m.NumDOF(); i++ {
 			row := m.StiffnessRow(k, i)
 			xold := soln.At(i, 0)
 			soln.SetVec(i, 0)
-			//xnew := (1-acceleration)*xold + acceleration/row.At(i, 0)*(b.At(i, 0)-mat64.Dot(row, soln))
 			xnew := (1-acceleration)*xold + acceleration/row.At(i, 0)*(b.At(i, 0)-mat64.Dot(row, soln))
 			soln.SetVec(i, xnew)
 		}
@@ -184,7 +183,7 @@ func (m *Mesh) SolveIter(k Kernel, maxiter int, l2tol float64) (iter int, err er
 		// we only care about norm/error proportional to number of nodes/DOF because twice as many
 		// nodes makes the norm twice as big for the same actual error - which we don't want - so
 		// scale to number of DOF.
-		if l2 := mat64.Norm(&diff, 1) / float64(m.NumDOF()); l2 < l2tol {
+		if er := mat64.Norm(&diff, 2) / mat64.Norm(soln, 2); er < tol {
 			break
 		}
 		prev.CloneVec(soln)
