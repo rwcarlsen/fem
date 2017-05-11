@@ -26,6 +26,10 @@ type Mesh struct {
 	// Conv is the coordinate conversion function/logic used for calculating solutions at
 	// arbitrary points on the mesh.
 	Conv Converter
+	// Bandwidth is the maximum off-diagonal distance that will be used for solving - other
+	// entries are assumed zero.  If bandwidth is zero, the full dense matrix will be
+	// computed/solved.
+	Bandwidth int
 }
 
 // nodeId returns the global node id for the given element index and its local
@@ -90,7 +94,7 @@ func (m *Mesh) AddElement(e Element) error {
 // points and order specifies the polynomial shape function order used in each element to
 // approximate the solution.
 func NewMeshSimple1D(nodePos []float64, order int) (*Mesh, error) {
-	m := &Mesh{nodeIndex: map[*Node]int{}, indexNode: map[int][]*Node{}}
+	m := &Mesh{Bandwidth: order, nodeIndex: map[*Node]int{}, indexNode: map[int][]*Node{}}
 	if (len(nodePos)-1)%order != 0 {
 		return nil, fmt.Errorf("incompatible mesh order (%v) and node count (%v)", order, len(nodePos))
 	}
@@ -160,54 +164,6 @@ func (m *Mesh) Solve(k Kernel) error {
 	return nil
 }
 
-type GaussSeidel struct {
-	MaxIter int
-	Tol     float64
-}
-
-func (g *GaussSeidel) solveRow(i int, row, b, soln *mat64.Vector) {
-	acceleration := 1.8 // between 1.0 and 2.0
-	xold := soln.At(i, 0)
-	soln.SetVec(i, 0)
-	Ainverse := 1 / row.At(i, 0)
-	xnew := (1-acceleration)*xold +
-		acceleration*Ainverse*(b.At(i, 0)-mat64.Dot(row, soln))
-	soln.SetVec(i, xnew)
-}
-
-func (g *GaussSeidel) forwardIter(Ai func(row int) *mat64.Vector, b, soln *mat64.Vector) {
-	for i := 0; i < b.Len(); i++ {
-		g.solveRow(i, Ai(i), b, soln)
-	}
-}
-
-func (g *GaussSeidel) backwardIter(Ai func(row int) *mat64.Vector, b, soln *mat64.Vector) {
-	for i := b.Len() - 1; i >= 0; i-- {
-		g.solveRow(i, Ai(i), b, soln)
-	}
-}
-
-func (g *GaussSeidel) Solve(Ai func(row int) *mat64.Vector, b *mat64.Vector) (soln *mat64.Vector, niter int) {
-	prev := mat64.NewVector(b.Len(), nil)
-	soln = mat64.NewVector(b.Len(), nil)
-	soln.CloneVec(b)
-
-	n := 0
-	for ; n < g.MaxIter; n++ {
-		g.forwardIter(Ai, b, soln)
-		g.backwardIter(Ai, b, soln)
-
-		// check convergence
-		var diff mat64.Vector
-		diff.SubVec(soln, prev)
-		if er := mat64.Norm(&diff, 2) / mat64.Norm(soln, 2); er < g.Tol {
-			break
-		}
-		prev.CloneVec(soln)
-	}
-	return soln, n
-}
-
 // SolveIter uses a symmetric (forward-backward) Gauss-Seidel iterative algorithm with successive
 // over relaxation to solve the system.
 func (m *Mesh) SolveIter(k Kernel, maxiter int, tol float64) (iter int, err error) {
@@ -267,6 +223,9 @@ func (m *Mesh) StiffnessRow(k Kernel, row int) *mat64.Vector {
 
 			for j := 0; j < len(elem.Nodes()); j++ {
 				b := m.nodeId(e, j)
+				if m.Bandwidth > 0 && absInt(a-b) > m.Bandwidth {
+					continue
+				}
 				v := elem.IntegrateStiffness(k, i, j)
 				mat.SetVec(b, mat.At(b, 0)+v)
 			}
@@ -279,14 +238,25 @@ func (m *Mesh) StiffnessRow(k Kernel, row int) *mat64.Vector {
 // node test and weight functions representing the result of the integration
 // terms of the weak form of the differential equation in k that
 // include/depend on u(x).  This is the K matrix in the equation the K*u=f.
-func (m *Mesh) StiffnessMatrix(k Kernel) *mat64.Dense {
+func (m *Mesh) StiffnessMatrix(k Kernel) Matrix {
 	m.finalize()
 	size := m.NumDOF()
-	mat := mat64.NewDense(size, size, nil)
+
+	var mat Matrix
+	if m.Bandwidth > 0 {
+		mat = NewNBanded(size, m.Bandwidth)
+	} else {
+		mat = mat64.NewDense(size, size, nil)
+	}
+
 	for e, elem := range m.Elems {
 		for i, n := range elem.Nodes() {
+			a := m.nodeId(e, i)
 			for j := i; j < len(elem.Nodes()); j++ {
-				a, b := m.nodeId(e, i), m.nodeId(e, j)
+				b := m.nodeId(e, j)
+				if m.Bandwidth > 0 && absInt(a-b) > m.Bandwidth {
+					continue
+				}
 				v := elem.IntegrateStiffness(k, i, j)
 				mat.Set(a, b, mat.At(a, b)+v)
 				mat.Set(b, a, mat.At(a, b))
