@@ -51,7 +51,7 @@ func (b *Box) Find(x []float64) (Element, error) {
 			return e, nil
 		}
 	}
-	return nil, fmt.Errorf("element not found in bounding Box tree for x=%v")
+	return nil, fmt.Errorf("element not found in bounding Box tree for x=%v", x)
 }
 
 func (b *Box) printTree(w io.Writer, level int) {

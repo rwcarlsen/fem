@@ -16,13 +16,16 @@ type Mesh struct {
 	// mesh.
 	Elems []Element
 	// nodeIndex maps all nodes to a global index/ID
-	nodeIndex map[Node]int
+	nodeIndex map[*Node]int
 	// indexNode maps all global node indices to a list of nodes at the
 	// corresponding position
-	indexNode map[int][]Node
+	indexNode map[int][]*Node
 	// box is a helper to speed up the identification of elements that enclose
 	// certain points in the mesh.  This helps lookups to be more performant.
 	box *Box
+	// Conv is the coordinate conversion function/logic used for calculating solutions at
+	// arbitrary points on the mesh.
+	Conv Converter
 }
 
 // nodeId returns the global node id for the given element index and its local
@@ -53,7 +56,7 @@ func (m *Mesh) finalize() {
 	ids := map[posHash]int{}
 	for _, e := range m.Elems {
 		for _, n := range e.Nodes() {
-			hx := hashX(n.X())
+			hx := hashX(n.X)
 			if id, ok := ids[hx]; ok {
 				m.nodeIndex[n] = id
 				m.indexNode[id] = append(m.indexNode[id], n)
@@ -70,6 +73,8 @@ func (m *Mesh) finalize() {
 	m.box = NewBox(m.Elems, 10, 10)
 }
 
+func (m *Mesh) NumDOF() int { return len(m.indexNode) }
+
 // AddElement is for adding custom-built elements to a mesh.  When all
 // elements have been added.  Elements must form a single, contiguous domain
 // (i.e.  with no holes/gaps).
@@ -82,18 +87,19 @@ func (m *Mesh) AddElement(e Element) error {
 }
 
 // NewMeshSimple1D creates a simply-connected mesh with nodes at the specified
-// points and degree nodes per element.
-func NewMeshSimple1D(nodePos []float64, degree int) (*Mesh, error) {
-	m := &Mesh{nodeIndex: map[Node]int{}, indexNode: map[int][]Node{}}
-	if (len(nodePos)-1)%(degree-1) != 0 {
-		return nil, fmt.Errorf("incompatible mesh degree (%v) and node count (%v)", degree, len(nodePos))
+// points and order specifies the polynomial shape function order used in each element to
+// approximate the solution.
+func NewMeshSimple1D(nodePos []float64, order int) (*Mesh, error) {
+	m := &Mesh{nodeIndex: map[*Node]int{}, indexNode: map[int][]*Node{}}
+	if (len(nodePos)-1)%order != 0 {
+		return nil, fmt.Errorf("incompatible mesh order (%v) and node count (%v)", order, len(nodePos))
 	}
 
-	nElems := (len(nodePos) - 1) / (degree - 1)
+	nElems := (len(nodePos) - 1) / order
 	for i := 0; i < nElems; i++ {
-		xs := make([]float64, degree)
-		for j := 0; j < degree; j++ {
-			xs[j] = nodePos[i*(degree-1)+j]
+		xs := make([]float64, order+1)
+		for j := 0; j < order+1; j++ {
+			xs[j] = nodePos[i*order+j]
 		}
 		m.AddElement(NewElementSimple1D(xs))
 	}
@@ -104,11 +110,18 @@ func NewMeshSimple1D(nodePos []float64, degree int) (*Mesh, error) {
 // Solve must have been called before this for it to return meaningful
 // results.
 func (m *Mesh) Interpolate(x []float64) (float64, error) {
+	if m.Conv == nil {
+		m.Conv = OptimConverter
+	}
 	elem, err := m.box.Find(x)
 	if err != nil {
 		return 0, err
 	}
-	return Interpolate(elem, x)
+	refx, err := m.Conv(elem, x)
+	if err != nil {
+		return 0, err
+	}
+	return Interpolate(elem, refx), nil
 }
 
 // reset renormalizes all the node shape functions in the mesh to one - i.e.
@@ -116,7 +129,8 @@ func (m *Mesh) Interpolate(x []float64) (float64, error) {
 func (m *Mesh) reset() {
 	for _, e := range m.Elems {
 		for _, n := range e.Nodes() {
-			n.Set(1, 1)
+			n.U = 1
+			n.W = 1
 		}
 	}
 }
@@ -139,10 +153,50 @@ func (m *Mesh) Solve(k Kernel) error {
 	for i := 0; i < u.Len(); i++ {
 		nodes := m.indexNode[i]
 		for _, n := range nodes {
-			n.Set(u.At(i, 0), 1)
+			n.U = u.At(i, 0)
+			n.W = 1
 		}
 	}
 	return nil
+}
+
+func (m *Mesh) SolveIter(k Kernel, maxiter int, tol float64) (iter int, err error) {
+	m.reset()
+	b := m.ForceMatrix(k)
+
+	prev := mat64.NewVector(m.NumDOF(), nil)
+	soln := mat64.NewVector(m.NumDOF(), nil)
+
+	n := 0
+	acceleration := 1.7 // between 1.0 and 2.0
+	for ; n < maxiter; n++ {
+		for i := 0; i < m.NumDOF(); i++ {
+			row := m.StiffnessRow(k, i)
+			xold := soln.At(i, 0)
+			soln.SetVec(i, 0)
+			xnew := (1-acceleration)*xold + acceleration/row.At(i, 0)*(b.At(i, 0)-mat64.Dot(row, soln))
+			soln.SetVec(i, xnew)
+		}
+
+		var diff mat64.Vector
+		diff.SubVec(soln, prev)
+		// we only care about norm/error proportional to number of nodes/DOF because twice as many
+		// nodes makes the norm twice as big for the same actual error - which we don't want - so
+		// scale to number of DOF.
+		if er := mat64.Norm(&diff, 2) / mat64.Norm(soln, 2); er < tol {
+			break
+		}
+		prev.CloneVec(soln)
+	}
+
+	for i := 0; i < soln.Len(); i++ {
+		nodes := m.indexNode[i]
+		for _, n := range nodes {
+			n.U = soln.At(i, 0)
+			n.W = 1
+		}
+	}
+	return n, nil
 }
 
 // ForceMatrix builds the matrix with one entry for each node representing the
@@ -151,17 +205,41 @@ func (m *Mesh) Solve(k Kernel) error {
 // vector in the equation the K*u=f.
 func (m *Mesh) ForceMatrix(k Kernel) *mat64.Vector {
 	m.finalize()
-	size := len(m.indexNode)
+	size := m.NumDOF()
 	mat := mat64.NewVector(size, nil)
 	for e, elem := range m.Elems {
 		for i, n := range elem.Nodes() {
 			a := m.nodeId(e, i)
-			if ok, v := k.IsDirichlet(n.X()); ok {
+			if ok, v := k.IsDirichlet(n.X); ok {
 				mat.SetVec(a, v)
 				continue
 			}
 			v := elem.IntegrateForce(k, i)
 			mat.SetVec(a, mat.At(a, 0)+v)
+		}
+	}
+	return mat
+}
+
+func (m *Mesh) StiffnessRow(k Kernel, row int) *mat64.Vector {
+	m.finalize()
+	size := m.NumDOF()
+	mat := mat64.NewVector(size, nil)
+	for e, elem := range m.Elems {
+		for i, n := range elem.Nodes() {
+			a := m.nodeId(e, i)
+			if a != row {
+				continue
+			} else if ok, _ := k.IsDirichlet(n.X); ok {
+				mat.SetVec(row, 1.0)
+				return mat
+			}
+
+			for j := 0; j < len(elem.Nodes()); j++ {
+				b := m.nodeId(e, j)
+				v := elem.IntegrateStiffness(k, i, j)
+				mat.SetVec(b, mat.At(b, 0)+v)
+			}
 		}
 	}
 	return mat
@@ -173,7 +251,7 @@ func (m *Mesh) ForceMatrix(k Kernel) *mat64.Vector {
 // include/depend on u(x).  This is the K matrix in the equation the K*u=f.
 func (m *Mesh) StiffnessMatrix(k Kernel) *mat64.Dense {
 	m.finalize()
-	size := len(m.indexNode)
+	size := m.NumDOF()
 	mat := mat64.NewDense(size, size, nil)
 	for e, elem := range m.Elems {
 		for i, n := range elem.Nodes() {
@@ -182,7 +260,7 @@ func (m *Mesh) StiffnessMatrix(k Kernel) *mat64.Dense {
 				v := elem.IntegrateStiffness(k, i, j)
 				mat.Set(a, b, mat.At(a, b)+v)
 				mat.Set(b, a, mat.At(a, b))
-				if ok, _ := k.IsDirichlet(n.X()); ok {
+				if ok, _ := k.IsDirichlet(n.X); ok {
 					for c := 0; c < len(elem.Nodes()); c++ {
 						mat.Set(a, c, 0.0)
 					}
