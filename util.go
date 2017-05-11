@@ -2,6 +2,16 @@ package main
 
 import "math"
 
+func minInt(vals ...int) int {
+	minv := vals[0]
+	for _, v := range vals[1:] {
+		if v < minv {
+			minv = v
+		}
+	}
+	return minv
+}
+
 func min(vals ...float64) float64 {
 	v := vals[0]
 	for _, val := range vals[1:] {

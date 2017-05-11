@@ -166,7 +166,7 @@ type GaussSeidel struct {
 }
 
 func (g *GaussSeidel) solveRow(i int, row, b, soln *mat64.Vector) {
-	acceleration := 1.8 // between 1.0 and 2.0
+	acceleration := 1.0 // between 1.0 and 2.0
 	xold := soln.At(i, 0)
 	soln.SetVec(i, 0)
 	Ainverse := 1 / row.At(i, 0)
@@ -175,19 +175,56 @@ func (g *GaussSeidel) solveRow(i int, row, b, soln *mat64.Vector) {
 	soln.SetVec(i, xnew)
 }
 
-func (g *GaussSeidel) forwardIter(Ai func(row int) *mat64.Vector, b, soln *mat64.Vector) {
+func (g *GaussSeidel) forwardIter(Ai func(row int) []float64, b, soln *mat64.Vector) {
+	blocksize := 13
+
+	nblocks := b.Len()/blocksize + minInt(1, b.Len()%blocksize)
+	sizelast := b.Len() % blocksize
+	if sizelast == 0 {
+		sizelast = blocksize
+	}
+
+	mat := mat64.NewDense(blocksize, b.Len(), nil)
+	fmt.Println(mat.Dims())
+	nrows, istart := 0, 0
 	for i := 0; i < b.Len(); i++ {
-		g.solveRow(i, Ai(i), b, soln)
+		mat.SetRow(nrows, Ai(i))
+		nrows++
+
+		if (nrows == blocksize) || (i == b.Len()-1) && nrows > 0 {
+			for nb := 0; nb < nblocks; nb++ {
+				//fmt.Println("block ", nb+1)
+				ncols := nrows
+				if nb == nblocks-1 {
+					ncols = sizelast
+				}
+				left, right := nb*blocksize, nb*blocksize+ncols
+				//fmt.Printf("slice[%v:%v,%v:%v]\n", 0, nrows, left, right)
+				block := mat.Slice(0, nrows, left, right)
+				subsoln := soln.SliceVec(left, right)
+				fmt.Println("row=", i+1, ", block=", nb+1, ", nrows=", nrows, ", ncols=", ncols)
+				subsoln.SolveVec(block, b.SliceVec(istart, istart+nrows))
+				//fmt.Printf("subblock:\n%.2v\n", mat64.Formatted(block))
+				//fmt.Printf("subforce:\n%.2v\n", mat64.Formatted(b.SliceVec(left, right)))
+			}
+
+			for j := 0; j < nrows; j++ {
+				g.solveRow(istart+j, mat.RowView(j), b, soln)
+			}
+			nrows = 0
+			istart = i + 1
+		}
 	}
+	fmt.Printf("soln:\n%.5v\n", mat64.Formatted(soln))
 }
 
-func (g *GaussSeidel) backwardIter(Ai func(row int) *mat64.Vector, b, soln *mat64.Vector) {
+func (g *GaussSeidel) backwardIter(Ai func(row int) []float64, b, soln *mat64.Vector) {
 	for i := b.Len() - 1; i >= 0; i-- {
-		g.solveRow(i, Ai(i), b, soln)
+		g.solveRow(i, mat64.NewVector(b.Len(), Ai(i)), b, soln)
 	}
 }
 
-func (g *GaussSeidel) Solve(Ai func(row int) *mat64.Vector, b *mat64.Vector) (soln *mat64.Vector, niter int) {
+func (g *GaussSeidel) Solve(Ai func(row int) []float64, b *mat64.Vector) (soln *mat64.Vector, niter int) {
 	prev := mat64.NewVector(b.Len(), nil)
 	soln = mat64.NewVector(b.Len(), nil)
 	soln.CloneVec(b)
@@ -195,7 +232,7 @@ func (g *GaussSeidel) Solve(Ai func(row int) *mat64.Vector, b *mat64.Vector) (so
 	n := 0
 	for ; n < g.MaxIter; n++ {
 		g.forwardIter(Ai, b, soln)
-		g.backwardIter(Ai, b, soln)
+		//g.backwardIter(Ai, b, soln)
 
 		// check convergence
 		var diff mat64.Vector
@@ -213,7 +250,7 @@ func (g *GaussSeidel) Solve(Ai func(row int) *mat64.Vector, b *mat64.Vector) (so
 func (m *Mesh) SolveIter(k Kernel, maxiter int, tol float64) (iter int, err error) {
 	m.reset()
 	b := m.ForceMatrix(k)
-	Ai := func(row int) *mat64.Vector { return m.StiffnessRow(k, row) }
+	Ai := func(row int) []float64 { return m.StiffnessRow(k, row).RawVector().Data }
 
 	solver := &GaussSeidel{maxiter, tol}
 	soln, n := solver.Solve(Ai, b)
