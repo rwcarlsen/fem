@@ -174,15 +174,13 @@ func (m *Mesh) SolveIter(k Kernel, maxiter int, tol float64) (iter int, err erro
 			row := m.StiffnessRow(k, i)
 			xold := soln.At(i, 0)
 			soln.SetVec(i, 0)
-			xnew := (1-acceleration)*xold + acceleration/row.At(i, 0)*(b.At(i, 0)-mat64.Dot(row, soln))
+			xnew := (1-acceleration)*xold +
+				acceleration/row.At(i, 0)*(b.At(i, 0)-mat64.Dot(row, soln))
 			soln.SetVec(i, xnew)
 		}
 
 		var diff mat64.Vector
 		diff.SubVec(soln, prev)
-		// we only care about norm/error proportional to number of nodes/DOF because twice as many
-		// nodes makes the norm twice as big for the same actual error - which we don't want - so
-		// scale to number of DOF.
 		if er := mat64.Norm(&diff, 2) / mat64.Norm(soln, 2); er < tol {
 			break
 		}
