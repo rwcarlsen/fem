@@ -1,85 +1,74 @@
 package lu
 
 import (
-	"fmt"
 	"math"
 
 	"github.com/gonum/matrix/mat64"
 )
 
 type index struct {
-	row, col int
+	row, col int32
 }
 
 type Sparse struct {
 	// map[row][]col
 	data       map[index]float64
-	nonzeroRow [][]int
-	nonzeroCol [][]int
+	nonzeroRow []map[int]struct{}
+	nonzeroCol []map[int]struct{}
 	size       int
 }
 
 func NewSparse(size int) *Sparse {
 	return &Sparse{
 		data:       make(map[index]float64),
-		nonzeroRow: make([][]int, size),
-		nonzeroCol: make([][]int, size),
+		nonzeroRow: make([]map[int]struct{}, size),
+		nonzeroCol: make([]map[int]struct{}, size),
 		size:       size,
 	}
 }
 
 const eps = 1e-6
 
-func (s *Sparse) NonzeroRows(col int) (row []int) { return s.nonzeroRow[col] }
-func (s *Sparse) NonzeroCols(row int) (col []int) { return s.nonzeroCol[row] }
+func (s *Sparse) NonzeroRows(col int) (rows map[int]struct{}) { return s.nonzeroRow[col] }
+func (s *Sparse) NonzeroCols(row int) (cols map[int]struct{}) { return s.nonzeroCol[row] }
 
 func (s *Sparse) Clone() *Sparse {
 	clone := NewSparse(s.size)
 	for k, v := range s.data {
-		clone.Set(k.row, k.col, v)
+		clone.Set(int(k.row), int(k.col), v)
 	}
 	return clone
 }
 
 func (s *Sparse) T() mat64.Matrix     { return mat64.Transpose{s} }
 func (s *Sparse) Dims() (int, int)    { return s.size, s.size }
-func (s *Sparse) At(i, j int) float64 { return s.data[index{i, j}] }
+func (s *Sparse) At(i, j int) float64 { return s.data[index{int32(i), int32(j)}] }
 func (s *Sparse) Set(i, j int, v float64) {
 	if math.Abs(v) < eps {
 		//fmt.Printf("        Set(%v,%v) to zero\n", i, j)
-		delete(s.data, index{i, j})
-		fmt.Printf("len nonzerocols before = %v\n", len(s.nonzeroCol[i]))
-		fmt.Printf("len nonzerorows before = %v\n", len(s.nonzeroRow[i]))
-		for ii, col := range s.nonzeroCol[i] {
-			if col == j {
-				s.nonzeroCol[i] = append([]int{}, append(s.nonzeroCol[i][:ii], s.nonzeroCol[i][ii+1:]...)...)
-				break
-			}
-		}
-		for ii, row := range s.nonzeroRow[j] {
-			if row == i {
-				s.nonzeroRow[j] = append([]int{}, append(s.nonzeroRow[j][:ii], s.nonzeroRow[j][ii+1:]...)...)
-				break
-			}
-		}
-		fmt.Printf("len nonzerocols after = %v\n", len(s.nonzeroCol[i]))
-		fmt.Printf("len nonzerorows after = %v\n", len(s.nonzeroRow[i]))
+		delete(s.data, index{int32(i), int32(j)})
+		delete(s.nonzeroCol[i], j)
+		delete(s.nonzeroRow[j], i)
 		return
 	}
 
-	if _, ok := s.data[index{i, j}]; !ok {
-		//fmt.Printf("        Set(%v,%v)=%v and added nonzero col+row\n", i, j, v)
-		s.nonzeroCol[i] = append(s.nonzeroCol[i], j)
-		s.nonzeroRow[j] = append(s.nonzeroRow[j], i)
-		//fmt.Printf("            nonzeroRows(%v)=%v\n", j, s.nonzeroRow[j])
-		//fmt.Printf("            nonzeroCols(%v)=%v\n", i, s.nonzeroCol[i])
+	//fmt.Printf("        Set(%v,%v)=%v and added nonzero col+row\n", i, j, v)
+	//fmt.Printf("            nonzeroRows(%v)=%v\n", j, s.nonzeroRow[j])
+	//fmt.Printf("            nonzeroCols(%v)=%v\n", i, s.nonzeroCol[i])
+	if s.nonzeroCol[i] == nil {
+		s.nonzeroCol[i] = make(map[int]struct{})
 	}
-	s.data[index{i, j}] = v
+	if s.nonzeroRow[j] == nil {
+		s.nonzeroRow[j] = make(map[int]struct{}, i)
+	}
+	s.nonzeroCol[i][j] = struct{}{}
+	s.nonzeroRow[j][i] = struct{}{}
+	s.data[index{int32(i), int32(j)}] = v
 }
 
 func RowCombination(s *Sparse, rowsrc, rowdst int, mult float64) {
 	cols := s.NonzeroCols(rowsrc)
-	for _, col := range cols {
+	for col := range cols {
 		//fmt.Printf("        A(%v,%v) += A(%v,%v)*%v\n", rowdst, col, rowsrc, col, mult)
 		s.Set(rowdst, col, s.At(rowdst, col)+s.At(rowsrc, col)*mult)
 	}
@@ -87,7 +76,7 @@ func RowCombination(s *Sparse, rowsrc, rowdst int, mult float64) {
 
 func RowMult(s *Sparse, row int, mult float64) {
 	cols := s.NonzeroCols(row)
-	for _, col := range cols {
+	for col := range cols {
 		s.Set(row, col, s.At(row, col)*mult)
 	}
 }
@@ -106,14 +95,14 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 				break
 			}
 		}
-		fmt.Printf("selected row %v as pivot\n", piv)
-		fmt.Printf("Num nonzeros for col %v is %v\n", j, len(A.nonzeroRow[j]))
+		//fmt.Printf("selected row %v as pivot\n", piv)
+		//fmt.Printf("Num nonzeros for col %v is %v\n", j, len(A.nonzeroRow[j]))
 		pivots[j] = piv
 		donerows[piv] = true
 
 		pval := A.At(piv, j)
 		bval := b[piv]
-		for _, i := range A.NonzeroRows(j) {
+		for i := range A.NonzeroRows(j) {
 			if i != piv {
 				mult := -A.At(i, j) / pval
 				//fmt.Printf("   pivot times %v plus row %v\n", mult, i)

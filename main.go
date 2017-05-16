@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"runtime/pprof"
 
 	"github.com/gonum/matrix/mat64"
 )
@@ -14,9 +16,19 @@ var order = flag.Int("order", 2, "lagrange shape function order")
 var iter = flag.Int("iter", -1, "number of iterations for solve (default=direct)")
 var l2tol = flag.Float64("tol", 1e-5, "l2 norm consecutive iterative soln diff threshold")
 
+var cpuprofile = flag.String("cpuprofile", "", "profile file name")
+
 func main() {
 	log.SetFlags(0)
 	flag.Parse()
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
 	TestHeatKernel()
 }
 
@@ -52,6 +64,7 @@ func TestHeatKernel() {
 
 	if *iter < 1 {
 		err = mesh.SolveSparse(hc)
+		//err = mesh.Solve(hc)
 		if err != nil {
 			log.Fatal(err)
 		}
