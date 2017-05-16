@@ -51,7 +51,7 @@ func TestHeatKernel() {
 	}
 
 	if *iter < 1 {
-		err = mesh.Solve(hc)
+		err = mesh.SolveSparse(hc)
 		if err != nil {
 			log.Fatal(err)
 		}

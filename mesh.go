@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/gonum/matrix/mat64"
+	"github.com/rwcarlsen/fem/lu"
 )
 
 // Mesh represents a collection of elements constituting an approximation for
@@ -164,6 +165,24 @@ func (m *Mesh) Solve(k Kernel) error {
 	return nil
 }
 
+// SolveSparse
+func (m *Mesh) SolveSparse(k Kernel) error {
+	m.reset()
+	A := m.StiffnessMatrix(k)
+	b := m.ForceMatrix(k)
+
+	x := lu.GaussJordan(A, b.RawVector().Data)
+
+	for i, val := range x {
+		nodes := m.indexNode[i]
+		for _, n := range nodes {
+			n.U = val
+			n.W = 1
+		}
+	}
+	return nil
+}
+
 // SolveIter uses a symmetric (forward-backward) Gauss-Seidel iterative algorithm with successive
 // over relaxation to solve the system.
 func (m *Mesh) SolveIter(k Kernel, maxiter int, tol float64) (iter int, err error) {
@@ -238,16 +257,10 @@ func (m *Mesh) StiffnessRow(k Kernel, row int) *mat64.Vector {
 // node test and weight functions representing the result of the integration
 // terms of the weak form of the differential equation in k that
 // include/depend on u(x).  This is the K matrix in the equation the K*u=f.
-func (m *Mesh) StiffnessMatrix(k Kernel) Matrix {
+func (m *Mesh) StiffnessMatrix(k Kernel) *lu.Sparse {
 	m.finalize()
 	size := m.NumDOF()
-
-	var mat Matrix
-	if m.Bandwidth > 0 {
-		mat = NewNBanded(size, m.Bandwidth)
-	} else {
-		mat = mat64.NewDense(size, size, nil)
-	}
+	mat := lu.NewSparse(size)
 
 	for e, elem := range m.Elems {
 		for i, n := range elem.Nodes() {
