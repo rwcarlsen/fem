@@ -2,6 +2,7 @@ package lu
 
 import (
 	"math"
+	"sort"
 
 	"github.com/gonum/matrix/mat64"
 )
@@ -76,10 +77,50 @@ func RowMult(s *Sparse, row int, mult float64) {
 	}
 }
 
+func (s *Sparse) Permute(indices []int) *Sparse {
+	clone := NewSparse(s.size)
+	for i, inew := range indices {
+		for j, val := range s.NonzeroCols(i) {
+			clone.Set(inew, j, val)
+		}
+	}
+	return clone
+}
+
 func GaussJordan(A *Sparse, b []float64) []float64 {
 	size, _ := A.Dims()
-	donerows := make(map[int]bool, size)
-	pivots := make([]int, size)
+	rowmap := make([]int, size)
+	for i := range rowmap {
+		rowmap[i] = i
+	}
+
+	//fmt.Println("permuting rows...")
+	// permute rows so that nonzero entries are as far left as possible in
+	// the higher rows. There was a bug in sort.Slice in go master - so I
+	// switched to SliceStable.
+	sort.SliceStable(rowmap, func(a, b int) bool {
+		centroida := 0.0
+		cols := A.NonzeroCols(a)
+		for j := range cols {
+			centroida += float64(j)
+		}
+		centroida /= float64(len(cols))
+
+		centroidb := 0.0
+		cols = A.NonzeroCols(b)
+		for j := range cols {
+			centroidb += float64(j)
+		}
+		centroidb /= float64(len(cols))
+		//fmt.Printf("    compare cm(%v)=%v < cm(%v)=%v is %v\n", a, centroida, b, centroidb, centroida < centroidb)
+		return centroida < centroidb
+	})
+	AA := A.Permute(rowmap)
+	bb := make([]float64, size)
+	for i, inew := range rowmap {
+		bb[inew] = b[i]
+	}
+	//fmt.Println("row permutation:", rowmap)
 
 	// Using pivot rows (usually along the diagonal), eliminate all entries
 	// below the pivot - doing this choosing a pivot row to eliminate nonzeros
@@ -90,70 +131,73 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 	// pivot rows in reverse eliminating nonzeros above the pivots (i.e. above
 	// the diagonal).
 
+	donerows := make(map[int]bool, size)
+	pivots := make([]int, size)
+
 	// first pass
 	for j := 0; j < size; j++ {
 		// find a first row with a nonzero entry in column i on or below diagonal
 		// to use as the pivot row.
 		piv := -1
 		for i := 0; i < size; i++ {
-			if A.At(i, j) != 0 && !donerows[i] {
+			if AA.At(i, j) != 0 && !donerows[i] {
 				piv = i
 				break
 			}
 		}
 		//fmt.Printf("selected row %v as pivot\n", piv)
-		//fmt.Printf("Num nonzeros for col %v is %v\n", j, len(A.nonzeroRow[j]))
+		//fmt.Printf("Num nonzeros for col %v is %v\n", j, len(AA.nonzeroRow[j]))
 		pivots[j] = piv
 		donerows[piv] = true
 
-		pval := A.At(piv, j)
-		bval := b[piv]
-		for i, aij := range A.NonzeroRows(j) {
+		pval := AA.At(piv, j)
+		bval := bb[piv]
+		for i, aij := range AA.NonzeroRows(j) {
 			if i != piv && i > piv {
 				mult := -aij / pval
 				//fmt.Printf("   pivot times %v plus row %v\n", mult, i)
-				RowCombination(A, piv, i, mult)
-				b[i] += bval * mult
+				RowCombination(AA, piv, i, mult)
+				bb[i] += bval * mult
 			} else {
-				//fmt.Printf("    skipping row %v which is the pivot\n", i)
+				//fmt.Printf("    skipping row %v which is (above) the pivot\n", i)
 			}
 		}
-		//fmt.Printf("after:\n%.2v\n", mat64.Formatted(A))
+		//fmt.Printf("after:\n%.2v\n", mat64.Formatted(AA))
 	}
 
 	// second pass
 	for j := size - 1; j >= 0; j-- {
 		piv := pivots[j]
 		//fmt.Printf("selected row %v as pivot\n", piv)
-		//fmt.Printf("Num nonzeros for col %v is %v\n", j, len(A.nonzeroRow[j]))
+		//fmt.Printf("Num nonzeros for col %v is %v\n", j, len(AA.nonzeroRow[j]))
 
-		pval := A.At(piv, j)
-		bval := b[piv]
-		for i, aij := range A.NonzeroRows(j) {
+		pval := AA.At(piv, j)
+		bval := bb[piv]
+		for i, aij := range AA.NonzeroRows(j) {
 			if i != piv && i < piv {
 				mult := -aij / pval
 				//fmt.Printf("   pivot times %v plus row %v\n", mult, i)
-				RowCombination(A, piv, i, mult)
-				b[i] += bval * mult
+				RowCombination(AA, piv, i, mult)
+				bb[i] += bval * mult
 			} else {
-				//fmt.Printf("    skipping row %v which is the pivot\n", i)
+				//fmt.Printf("    skipping row %v which is (below) the pivot\n", i)
 			}
 		}
-		//fmt.Printf("after:\n%.2v\n", mat64.Formatted(A))
+		//fmt.Printf("after:\n%.2v\n", mat64.Formatted(AA))
 	}
 
 	// renormalize each row so that leading nonzeros are ones (row echelon to
 	// reduced row echelon)
 	for j, i := range pivots {
-		mult := 1 / A.At(i, j)
-		RowMult(A, i, mult)
-		b[i] *= mult
+		mult := 1 / AA.At(i, j)
+		RowMult(AA, i, mult)
+		bb[i] *= mult
 	}
 
 	// re-sequence solution based on pivot row indices/order
 	x := make([]float64, size)
 	for i := range pivots {
-		x[i] = b[pivots[i]]
+		x[i] = bb[pivots[i]]
 	}
 
 	return x
