@@ -8,8 +8,40 @@ import (
 	"github.com/gonum/matrix/mat64"
 )
 
+func BenchmarkGonumLU(b *testing.B) {
+	size := 5000
+	nfill := 3 // number filled entries per row
+
+	s := mat64.NewDense(size, size, nil)
+	for i := 0; i < size; i++ {
+		s.Set(i, i, 10)
+	}
+
+	for i := 0; i < size; i++ {
+		for n := 0; n < nfill; n++ {
+			j := rand.Intn(size)
+			if i == j {
+				n--
+				continue
+			}
+			s.Set(i, j, rand.Float64())
+		}
+	}
+
+	f := mat64.NewVector(size, nil)
+	for i := 0; i < size; i++ {
+		f.SetVec(i, 1)
+	}
+
+	b.ResetTimer()
+	var x mat64.Vector
+	for i := 0; i < b.N; i++ {
+		x.SolveVec(s, f)
+	}
+}
+
 func BenchmarkGaussJordan(b *testing.B) {
-	size := 1000
+	size := 25
 	nfill := 3 // number filled entries per row
 
 	s := NewSparse(size)
