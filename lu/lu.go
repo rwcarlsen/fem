@@ -59,7 +59,7 @@ func (s *Sparse) Set(i, j int, v float64) {
 		s.nonzeroCol[i] = make(map[int]struct{})
 	}
 	if s.nonzeroRow[j] == nil {
-		s.nonzeroRow[j] = make(map[int]struct{}, i)
+		s.nonzeroRow[j] = make(map[int]struct{})
 	}
 	s.nonzeroCol[i][j] = struct{}{}
 	s.nonzeroRow[j][i] = struct{}{}
@@ -85,6 +85,17 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 	size, _ := A.Dims()
 	donerows := make(map[int]bool, size)
 	pivots := make([]int, size)
+
+	// Using pivot rows (usually along the diagonal), eliminate all entries
+	// below the pivot - doing this choosing a pivot row to eliminate nonzeros
+	// in each column.  We only eliminate below the diagonal on the first pass
+	// to reduce fill-in.  If we do only one pass total, eliminating entries
+	// above the diagonal converts many zero entries into nonzero entries
+	// which slows the algorithm down immensely.  The second pass walks the
+	// pivot rows in reverse eliminating nonzeros above the pivots (i.e. above
+	// the diagonal).
+
+	// first pass
 	for j := 0; j < size; j++ {
 		// find a first row with a nonzero entry in column i on or below diagonal
 		// to use as the pivot row.
@@ -103,7 +114,28 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 		pval := A.At(piv, j)
 		bval := b[piv]
 		for i := range A.NonzeroRows(j) {
-			if i != piv {
+			if i != piv && i > j {
+				mult := -A.At(i, j) / pval
+				//fmt.Printf("   pivot times %v plus row %v\n", mult, i)
+				RowCombination(A, piv, i, mult)
+				b[i] += bval * mult
+			} else {
+				//fmt.Printf("    skipping row %v which is the pivot\n", i)
+			}
+		}
+		//fmt.Printf("after:\n%.2v\n", mat64.Formatted(A))
+	}
+
+	// second pass
+	for j := size - 1; j >= 0; j-- {
+		piv := pivots[j]
+		//fmt.Printf("selected row %v as pivot\n", piv)
+		//fmt.Printf("Num nonzeros for col %v is %v\n", j, len(A.nonzeroRow[j]))
+
+		pval := A.At(piv, j)
+		bval := b[piv]
+		for i := range A.NonzeroRows(j) {
+			if i != piv && i < j {
 				mult := -A.At(i, j) / pval
 				//fmt.Printf("   pivot times %v plus row %v\n", mult, i)
 				RowCombination(A, piv, i, mult)
