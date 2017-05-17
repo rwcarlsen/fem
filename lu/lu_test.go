@@ -9,7 +9,7 @@ import (
 )
 
 func BenchmarkGonumLU(b *testing.B) {
-	size := 5000
+	size := 1000
 	nfill := 3 // number filled entries per row
 
 	s := mat64.NewDense(size, size, nil)
@@ -41,7 +41,7 @@ func BenchmarkGonumLU(b *testing.B) {
 }
 
 func BenchmarkGaussJordan(b *testing.B) {
-	size := 25
+	size := 1000
 	nfill := 3 // number filled entries per row
 
 	s := NewSparse(size)

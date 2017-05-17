@@ -77,7 +77,17 @@ func RowMult(s *Sparse, row int, mult float64) {
 	}
 }
 
-func (s *Sparse) Permute(indices []int) *Sparse {
+func (s *Sparse) PermuteCols(indices []int) *Sparse {
+	clone := NewSparse(s.size)
+	for j, jnew := range indices {
+		for i, val := range s.NonzeroRows(j) {
+			clone.Set(i, jnew, val)
+		}
+	}
+	return clone
+}
+
+func (s *Sparse) PermuteRows(indices []int) *Sparse {
 	clone := NewSparse(s.size)
 	for i, inew := range indices {
 		for j, val := range s.NonzeroCols(i) {
@@ -85,6 +95,24 @@ func (s *Sparse) Permute(indices []int) *Sparse {
 		}
 	}
 	return clone
+}
+
+//func (s *Sparse) Permute(mapping map[Index]Index) *Sparse {
+//	clone := NewSparse(s.size)
+//	for orig, next := range mapping {
+//		clone.Set(next.I, next.J, s.At(orig.I, orig.J))
+//	}
+//	return clone
+//}
+
+type Index struct {
+	I, J int
+}
+
+// CM provides an alternate degree-of-freedom reordering in assembled matrix that provides better
+// bandwidth properties for solvers.
+func CM(A *Sparse) map[Index]Index {
+	panic("unimplemented")
 }
 
 func GaussJordan(A *Sparse, b []float64) []float64 {
@@ -115,7 +143,8 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 		//fmt.Printf("    compare cm(%v)=%v < cm(%v)=%v is %v\n", a, centroida, b, centroidb, centroida < centroidb)
 		return centroida < centroidb
 	})
-	AA := A.Permute(rowmap)
+
+	AA := A.PermuteRows(rowmap)
 	bb := make([]float64, size)
 	for i, inew := range rowmap {
 		bb[inew] = b[i]
@@ -142,7 +171,7 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 		centroidb /= float64(len(rows))
 		return centroida < centroidb
 	})
-	AAA := AA.Permute(colmap)
+	AAA := AA.PermuteCols(colmap)
 
 	// Using pivot rows (usually along the diagonal), eliminate all entries
 	// below the pivot - doing this choosing a pivot row to eliminate nonzeros
