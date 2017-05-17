@@ -97,22 +97,72 @@ func (s *Sparse) PermuteRows(indices []int) *Sparse {
 	return clone
 }
 
-//func (s *Sparse) Permute(mapping map[Index]Index) *Sparse {
-//	clone := NewSparse(s.size)
-//	for orig, next := range mapping {
-//		clone.Set(next.I, next.J, s.At(orig.I, orig.J))
-//	}
-//	return clone
-//}
-
-type Index struct {
-	I, J int
+func (s *Sparse) Permute(mapping []int) *Sparse {
+	clone := NewSparse(s.size)
+	for i := 0; i < s.size; i++ {
+		for j, val := range s.NonzeroCols(i) {
+			clone.Set(mapping[i], mapping[j], val)
+		}
+	}
+	return clone
 }
 
 // CM provides an alternate degree-of-freedom reordering in assembled matrix that provides better
 // bandwidth properties for solvers.
-func CM(A *Sparse) map[Index]Index {
-	panic("unimplemented")
+func CM(A *Sparse) []int {
+	size, _ := A.Dims()
+	mapping := make(map[int]int, size)
+
+	// find row with farthest left centroid
+	mincentroid := math.Inf(1)
+	startrow := -1
+	for i := 0; i < size; i++ {
+		cols := A.NonzeroCols(i)
+		centroid := 0.0
+		for j := range cols {
+			centroid += float64(j)
+		}
+		centroid /= float64(len(cols))
+		if centroid < mincentroid {
+			mincentroid = centroid
+			startrow = i
+		}
+	}
+
+	// breadth-first search across adjacency/connections between nodes/dofs
+	nextlevel := []int{startrow}
+	for n := 0; n < size; n++ {
+		for _, i := range nextlevel {
+			if _, ok := mapping[i]; !ok {
+				mapping[i] = len(mapping)
+			}
+		}
+		if len(mapping) >= size {
+			break
+		}
+		nextlevel = nextCMLevel(A, mapping, nextlevel)
+	}
+
+	slice := make([]int, size)
+	for i := range slice {
+		slice[i] = i
+	}
+	for from, to := range mapping {
+		slice[from] = to
+	}
+	return slice
+}
+
+func nextCMLevel(A *Sparse, mapping map[int]int, ii []int) []int {
+	var nextlevel []int
+	for _, i := range ii {
+		for j := range A.NonzeroCols(i) {
+			if _, ok := mapping[j]; !ok {
+				nextlevel = append(nextlevel, j)
+			}
+		}
+	}
+	return nextlevel
 }
 
 func GaussJordan(A *Sparse, b []float64) []float64 {

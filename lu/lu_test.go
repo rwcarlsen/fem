@@ -1,6 +1,7 @@
 package lu
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"testing"
@@ -8,66 +9,99 @@ import (
 	"github.com/gonum/matrix/mat64"
 )
 
-func BenchmarkGonumLU(b *testing.B) {
-	size := 1000
-	nfill := 3 // number filled entries per row
-
-	s := mat64.NewDense(size, size, nil)
+func TestCM_big(t *testing.T) {
+	size := 35
+	nfill := 6
+	big := NewSparse(size)
 	for i := 0; i < size; i++ {
-		s.Set(i, i, 10)
+		big.Set(i, i, 8)
 	}
 
 	for i := 0; i < size; i++ {
-		for n := 0; n < nfill; n++ {
+		for n := 0; n < nfill/2; n++ {
 			j := rand.Intn(size)
 			if i == j {
-				n--
 				continue
 			}
-			s.Set(i, j, rand.Float64())
+			big.Set(i, j, 8)
+			big.Set(j, i, 8)
 		}
 	}
-
-	f := mat64.NewVector(size, nil)
-	for i := 0; i < size; i++ {
-		f.SetVec(i, 1)
-	}
-
-	b.ResetTimer()
-	var x mat64.Vector
-	for i := 0; i < b.N; i++ {
-		x.SolveVec(s, f)
-	}
+	mapping := CM(big)
+	permuted := big.Permute(mapping)
+	t.Logf("original=\n% v\n", mat64.Formatted(big), mat64.DotByte(' '))
+	t.Logf("permuted=\n% v\n", mat64.Formatted(permuted), mat64.DotByte(' '))
 }
 
-func BenchmarkGaussJordan(b *testing.B) {
-	size := 1000
-	nfill := 3 // number filled entries per row
-
-	s := NewSparse(size)
-	for i := 0; i < size; i++ {
-		s.Set(i, i, 10)
+func TestCM(t *testing.T) {
+	var tests = []struct {
+		size    int
+		vals    []float64
+		wantmap []int
+	}{
+		{
+			size: 4,
+			vals: []float64{
+				1, 0, 0, 0,
+				0, 2, 0, 0,
+				0, 0, 3, 0,
+				0, 0, 0, 4,
+			},
+			wantmap: []int{0, 1, 2, 3},
+		}, {
+			size: 4,
+			vals: []float64{
+				0, 2, 0, 0,
+				1, 0, 0, 0,
+				0, 0, 3, 0,
+				0, 0, 0, 4,
+			},
+			wantmap: []int{0, 1, 2, 3},
+		}, {
+			size: 4,
+			vals: []float64{
+				1, 1, 0, 0,
+				1, 1, 1, 0,
+				0, 1, 1, 1,
+				0, 0, 1, 1,
+			},
+			wantmap: []int{0, 1, 2, 3},
+		}, {
+			size: 4,
+			vals: []float64{
+				1, 1, 0, 1,
+				1, 1, 0, 1,
+				0, 0, 1, 1,
+				1, 1, 1, 1,
+			},
+			wantmap: []int{0, 1, 3, 2},
+		},
 	}
 
-	for i := 0; i < size; i++ {
-		for n := 0; n < nfill; n++ {
-			j := rand.Intn(size)
-			if i == j {
-				n--
-				continue
+	for i, test := range tests {
+		fmt.Println("------- test ", i+1)
+		A := NewSparse(test.size)
+		for i := 0; i < test.size; i++ {
+			for j := 0; j < test.size; j++ {
+				A.Set(i, j, test.vals[i*test.size+j])
 			}
-			s.Set(i, j, rand.Float64())
 		}
-	}
 
-	f := make([]float64, size)
-	for i := range f {
-		f[i] = 1
-	}
+		got := CM(A)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		GaussJordan(s, f)
+		failed := false
+		for i := range got {
+			if test.wantmap[i] != got[i] {
+				failed = true
+				break
+			}
+		}
+
+		if failed {
+			t.Errorf("test %v:  A=%v", i+1, mat64.Formatted(A, mat64.Prefix("                  ")))
+			t.Errorf("    A_perm=%v", mat64.Formatted(A.Permute(got), mat64.Prefix("                  ")))
+			t.Errorf("    mapping: got %v, want %v", got, test.wantmap)
+		}
 	}
 }
 
@@ -156,5 +190,68 @@ func TestGaussJordan(t *testing.T) {
 			t.Errorf("test %v A=\n%v\nb=%v", i+1, mat64.Formatted(refA), refb)
 			t.Errorf("    x: got %v, want %v", gotx, want)
 		}
+	}
+}
+
+func BenchmarkGonumLU(b *testing.B) {
+	size := 1000
+	nfill := 3 // number filled entries per row
+
+	s := mat64.NewDense(size, size, nil)
+	for i := 0; i < size; i++ {
+		s.Set(i, i, 10)
+	}
+
+	for i := 0; i < size; i++ {
+		for n := 0; n < nfill; n++ {
+			j := rand.Intn(size)
+			if i == j {
+				n--
+				continue
+			}
+			s.Set(i, j, rand.Float64())
+		}
+	}
+
+	f := mat64.NewVector(size, nil)
+	for i := 0; i < size; i++ {
+		f.SetVec(i, 1)
+	}
+
+	b.ResetTimer()
+	var x mat64.Vector
+	for i := 0; i < b.N; i++ {
+		x.SolveVec(s, f)
+	}
+}
+
+func BenchmarkGaussJordan(b *testing.B) {
+	size := 1000
+	nfill := 3 // number filled entries per row
+
+	s := NewSparse(size)
+	for i := 0; i < size; i++ {
+		s.Set(i, i, 10)
+	}
+
+	for i := 0; i < size; i++ {
+		for n := 0; n < nfill; n++ {
+			j := rand.Intn(size)
+			if i == j {
+				n--
+				continue
+			}
+			s.Set(i, j, rand.Float64())
+		}
+	}
+
+	f := make([]float64, size)
+	for i := range f {
+		f[i] = 1
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		GaussJordan(s, f)
 	}
 }
