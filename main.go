@@ -15,6 +15,7 @@ var nnodes = flag.Int("nodes", 5, "number of nodes/domain divisions-1")
 var order = flag.Int("order", 2, "lagrange shape function order")
 var iter = flag.Int("iter", -1, "number of iterations for solve (default=direct)")
 var l2tol = flag.Float64("tol", 1e-5, "l2 norm consecutive iterative soln diff threshold")
+var nsoln = flag.Int("nsol", 10, "number of uniformly distributed points to sample+print solution over")
 
 var cpuprofile = flag.String("cpuprofile", "", "profile file name")
 
@@ -77,11 +78,10 @@ func TestHeatKernel() {
 	}
 
 	fmt.Println("Solution:")
-	n := 100
-	for i := 0; i < n+1; i++ {
+	for i := 0; i < *nsoln+1; i++ {
 		x1 := hc.X[0]
 		x2 := hc.X[len(hc.X)-1]
-		x := []float64{float64(i)/float64(n)*(x2-x1) + x1}
+		x := []float64{float64(i)/float64(*nsoln)*(x2-x1) + x1}
 		y, err := mesh.Interpolate(x)
 		if err != nil {
 			log.Fatal(err)
