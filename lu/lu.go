@@ -1,6 +1,7 @@
 package lu
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/gonum/matrix/mat64"
@@ -12,25 +13,29 @@ type index struct {
 
 type Sparse struct {
 	// map[row][]col
-	data       map[index]float64
-	nonzeroRow []map[int]struct{}
-	nonzeroCol []map[int]struct{}
-	size       int
+	data           map[index]float64
+	nonzeroRow     []map[int]int
+	nonzeroCol     []map[int]int
+	nonzeroRowList [][]int
+	nonzeroColList [][]int
+	size           int
 }
 
 func NewSparse(size int) *Sparse {
 	return &Sparse{
-		data:       make(map[index]float64),
-		nonzeroRow: make([]map[int]struct{}, size),
-		nonzeroCol: make([]map[int]struct{}, size),
-		size:       size,
+		data:           make(map[index]float64),
+		nonzeroRow:     make([]map[int]int, size),
+		nonzeroCol:     make([]map[int]int, size),
+		nonzeroRowList: make([][]int, size),
+		nonzeroColList: make([][]int, size),
+		size:           size,
 	}
 }
 
 const eps = 1e-6
 
-func (s *Sparse) NonzeroRows(col int) (rows map[int]struct{}) { return s.nonzeroRow[col] }
-func (s *Sparse) NonzeroCols(row int) (cols map[int]struct{}) { return s.nonzeroCol[row] }
+func (s *Sparse) NonzeroRows(col int) (rows []int) { return s.nonzeroRowList[col] }
+func (s *Sparse) NonzeroCols(row int) (cols []int) { return s.nonzeroColList[row] }
 
 func (s *Sparse) Clone() *Sparse {
 	clone := NewSparse(s.size)
@@ -44,8 +49,37 @@ func (s *Sparse) T() mat64.Matrix     { return mat64.Transpose{s} }
 func (s *Sparse) Dims() (int, int)    { return s.size, s.size }
 func (s *Sparse) At(i, j int) float64 { return s.data[index{int32(i), int32(j)}] }
 func (s *Sparse) Set(i, j int, v float64) {
+	defer func() {
+		fmt.Printf("    len(s.nonzeroCol[%v])=%v\n", i, len(s.nonzeroCol[i]))
+		fmt.Printf("    len(s.nonzeroColList[%v])=%v\n", i, len(s.nonzeroColList[i]))
+	}()
+	fmt.Println("Sparse.Set()")
 	if math.Abs(v) < eps {
+		fmt.Println("setting to zero")
 		//fmt.Printf("        Set(%v,%v) to zero\n", i, j)
+		fmt.Printf("len(s.nonzeroCol[%v])=%v\n", i, len(s.nonzeroCol[i]))
+		fmt.Printf("len(s.nonzeroColList[%v])=%v\n", i, len(s.nonzeroColList[i]))
+		if ind, ok := s.nonzeroCol[i][j]; ok {
+			list := s.nonzeroColList[i]
+			for n := ind; n < len(list)-1; n++ {
+				list[n] = list[n+1]
+			}
+			for n := 0; n < ind; n++ {
+				s.nonzeroCol[i][n]--
+			}
+			s.nonzeroColList[i] = list[:len(list)-1]
+		}
+		if ind, ok := s.nonzeroRow[j][i]; ok {
+			list := s.nonzeroRowList[j]
+			for n := ind; n < len(list)-1; n++ {
+				list[n] = list[n+1]
+			}
+			for n := 0; n < ind; n++ {
+				s.nonzeroRow[j][n]--
+			}
+			s.nonzeroRowList[j] = list[:len(list)-1]
+		}
+
 		delete(s.data, index{int32(i), int32(j)})
 		delete(s.nonzeroCol[i], j)
 		delete(s.nonzeroRow[j], i)
@@ -56,19 +90,30 @@ func (s *Sparse) Set(i, j int, v float64) {
 	//fmt.Printf("            nonzeroRows(%v)=%v\n", j, s.nonzeroRow[j])
 	//fmt.Printf("            nonzeroCols(%v)=%v\n", i, s.nonzeroCol[i])
 	if s.nonzeroCol[i] == nil {
-		s.nonzeroCol[i] = make(map[int]struct{})
+		s.nonzeroCol[i] = make(map[int]int)
+	} else if ind, ok := s.nonzeroCol[i][j]; ok {
+		fmt.Printf("ind=%v, len(nonzeroColList[%v])=%v\n", ind, i, len(s.nonzeroColList))
+		s.nonzeroColList[i][ind] = j
+	} else {
+		s.nonzeroCol[i][j] = len(s.nonzeroColList)
+		s.nonzeroColList[i] = append(s.nonzeroColList[i], j)
 	}
+
 	if s.nonzeroRow[j] == nil {
-		s.nonzeroRow[j] = make(map[int]struct{})
+		s.nonzeroRow[j] = make(map[int]int)
+	} else if ind, ok := s.nonzeroRow[j][i]; ok {
+		s.nonzeroRowList[j][ind] = i
+	} else {
+		s.nonzeroRow[j][i] = len(s.nonzeroRowList)
+		s.nonzeroRowList[j] = append(s.nonzeroRowList[j], i)
 	}
-	s.nonzeroCol[i][j] = struct{}{}
-	s.nonzeroRow[j][i] = struct{}{}
+
 	s.data[index{int32(i), int32(j)}] = v
 }
 
 func RowCombination(s *Sparse, rowsrc, rowdst int, mult float64) {
 	cols := s.NonzeroCols(rowsrc)
-	for col := range cols {
+	for _, col := range cols {
 		//fmt.Printf("        A(%v,%v) += A(%v,%v)*%v\n", rowdst, col, rowsrc, col, mult)
 		s.Set(rowdst, col, s.At(rowdst, col)+s.At(rowsrc, col)*mult)
 	}
@@ -113,7 +158,7 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 
 		pval := A.At(piv, j)
 		bval := b[piv]
-		for i := range A.NonzeroRows(j) {
+		for _, i := range A.NonzeroRows(j) {
 			if i != piv && i > j {
 				mult := -A.At(i, j) / pval
 				//fmt.Printf("   pivot times %v plus row %v\n", mult, i)
@@ -134,7 +179,7 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 
 		pval := A.At(piv, j)
 		bval := b[piv]
-		for i := range A.NonzeroRows(j) {
+		for _, i := range A.NonzeroRows(j) {
 			if i != piv && i < j {
 				mult := -A.At(i, j) / pval
 				//fmt.Printf("   pivot times %v plus row %v\n", mult, i)
