@@ -16,6 +16,7 @@ var order = flag.Int("order", 2, "lagrange shape function order")
 var iter = flag.Int("iter", -1, "number of iterations for solve (default=direct)")
 var l2tol = flag.Float64("tol", 1e-5, "l2 norm consecutive iterative soln diff threshold")
 var nsoln = flag.Int("nsol", 10, "number of uniformly distributed points to sample+print solution over")
+var useDense = flag.Bool("dense", false, "use a dense matrix LU solver")
 
 var cpuprofile = flag.String("cpuprofile", "", "profile file name")
 
@@ -31,6 +32,12 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 	TestHeatKernel()
+}
+
+func check(err error) {
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func TestHeatKernel() {
@@ -52,9 +59,7 @@ func TestHeatKernel() {
 		},
 	}
 	mesh, err := NewMeshSimple1D(hc.X, *order)
-	if err != nil {
-		log.Fatal(err)
-	}
+	check(err)
 
 	if *printmats {
 		stiffness := mesh.StiffnessMatrix(hc)
@@ -63,17 +68,15 @@ func TestHeatKernel() {
 		fmt.Printf("force:\n%.5v\n", mat64.Formatted(force))
 	}
 
-	if *iter < 1 {
+	if *iter < 1 && *useDense {
+		err = mesh.Solve(hc)
+		check(err)
+	} else if *iter < 1 && !*useDense {
 		err = mesh.SolveSparse(hc)
-		//err = mesh.Solve(hc)
-		if err != nil {
-			log.Fatal(err)
-		}
+		check(err)
 	} else {
 		iter, err := mesh.SolveIter(hc, *iter, *l2tol)
-		if err != nil {
-			log.Fatal(err)
-		}
+		check(err)
 		log.Printf("converged after %v iterations", iter)
 	}
 
@@ -83,9 +86,7 @@ func TestHeatKernel() {
 		x2 := hc.X[len(hc.X)-1]
 		x := []float64{float64(i)/float64(*nsoln)*(x2-x1) + x1}
 		y, err := mesh.Interpolate(x)
-		if err != nil {
-			log.Fatal(err)
-		}
+		check(err)
 		fmt.Printf("%v\t%v\n", x[0], y)
 	}
 }

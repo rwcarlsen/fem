@@ -6,31 +6,23 @@ import (
 	"github.com/gonum/matrix/mat64"
 )
 
-type index struct {
-	row, col int32
-}
+const eps = 1e-6
 
 type Sparse struct {
-	// map[row][]col
-	data       map[index]float64
+	// map[col]map[row]val
 	nonzeroRow []map[int]float64
+	// map[row]map[col]val
 	nonzeroCol []map[int]float64
 	size       int
 }
 
 func NewSparse(size int) *Sparse {
 	return &Sparse{
-		data:       make(map[index]float64),
 		nonzeroRow: make([]map[int]float64, size),
 		nonzeroCol: make([]map[int]float64, size),
 		size:       size,
 	}
 }
-
-const eps = 1e-6
-
-func (s *Sparse) NonzeroRows(col int) (rows map[int]float64) { return s.nonzeroRow[col] }
-func (s *Sparse) NonzeroCols(row int) (cols map[int]float64) { return s.nonzeroCol[row] }
 
 func (s *Sparse) Clone() *Sparse {
 	clone := NewSparse(s.size)
@@ -42,10 +34,12 @@ func (s *Sparse) Clone() *Sparse {
 	return clone
 }
 
+func (s *Sparse) NonzeroRows(col int) (rows map[int]float64) { return s.nonzeroRow[col] }
+func (s *Sparse) NonzeroCols(row int) (cols map[int]float64) { return s.nonzeroCol[row] }
+
 func (s *Sparse) T() mat64.Matrix     { return mat64.Transpose{s} }
 func (s *Sparse) Dims() (int, int)    { return s.size, s.size }
 func (s *Sparse) At(i, j int) float64 { return s.nonzeroCol[i][j] }
-
 func (s *Sparse) Set(i, j int, v float64) {
 	if math.Abs(v) < eps {
 		//fmt.Printf("        Set(%v,%v) to zero\n", i, j)
@@ -115,7 +109,7 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 		pval := A.At(piv, j)
 		bval := b[piv]
 		for i, aij := range A.NonzeroRows(j) {
-			if i != piv && i > j {
+			if i != piv && i > piv {
 				mult := -aij / pval
 				//fmt.Printf("   pivot times %v plus row %v\n", mult, i)
 				RowCombination(A, piv, i, mult)
@@ -136,7 +130,7 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 		pval := A.At(piv, j)
 		bval := b[piv]
 		for i, aij := range A.NonzeroRows(j) {
-			if i != piv && i < j {
+			if i != piv && i < piv {
 				mult := -aij / pval
 				//fmt.Printf("   pivot times %v plus row %v\n", mult, i)
 				RowCombination(A, piv, i, mult)
@@ -148,12 +142,15 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 		//fmt.Printf("after:\n%.2v\n", mat64.Formatted(A))
 	}
 
+	// renormalize each row so that leading nonzeros are ones (row echelon to
+	// reduced row echelon)
 	for j, i := range pivots {
 		mult := 1 / A.At(i, j)
 		RowMult(A, i, mult)
 		b[i] *= mult
 	}
 
+	// re-sequence solution based on pivot row indices/order
 	x := make([]float64, size)
 	for i := range pivots {
 		x[i] = b[pivots[i]]

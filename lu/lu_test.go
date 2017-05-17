@@ -2,10 +2,43 @@ package lu
 
 import (
 	"math"
+	"math/rand"
 	"testing"
 
 	"github.com/gonum/matrix/mat64"
 )
+
+func BenchmarkGaussJordan(b *testing.B) {
+	size := 10000
+	fillfrac := 0.01
+
+	s := NewSparse(size)
+	for i := 0; i < size; i++ {
+		s.Set(i, i, 2)
+	}
+
+	nfill := int(float64(size) * float64(size) * fillfrac)
+	for n := 0; n < nfill; n++ {
+		i := rand.Intn(size)
+		j := rand.Intn(size)
+		if i == j {
+			n--
+			continue
+		}
+		s.Set(i, j, rand.Float64())
+	}
+
+	f := make([]float64, size)
+	for i := range f {
+		f[i] = 1
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		x := GaussJordan(s, f)
+		b.Log("soln:\n", x)
+	}
+}
 
 func TestGaussJordan(t *testing.T) {
 	var tests = []struct {

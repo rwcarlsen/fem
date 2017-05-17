@@ -26,7 +26,7 @@ func BenchmarkInterpolate(b *testing.B) {
 
 func benchMeshBuildN(n int) func(b *testing.B) {
 	return func(b *testing.B) {
-		degree := 2
+		order := 1
 		xs := make([]float64, n)
 		for i := range xs {
 			xs[i] = float64(i) / float64(n)
@@ -34,7 +34,7 @@ func benchMeshBuildN(n int) func(b *testing.B) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, err := NewMeshSimple1D(xs, degree)
+			_, err := NewMeshSimple1D(xs, order)
 			if err != nil {
 				b.Error(err)
 			}
@@ -44,12 +44,12 @@ func benchMeshBuildN(n int) func(b *testing.B) {
 
 func benchSolveN(n int) func(b *testing.B) {
 	return func(b *testing.B) {
-		degree := 2
+		order := 1
 		xs := make([]float64, n)
 		for i := range xs {
 			xs[i] = float64(i) / float64(n)
 		}
-		mesh, err := NewMeshSimple1D(xs, degree)
+		mesh, err := NewMeshSimple1D(xs, order)
 		if err != nil {
 			b.Error(err)
 		}
@@ -70,12 +70,12 @@ func benchSolveN(n int) func(b *testing.B) {
 
 func benchInterpolateN(n int) func(b *testing.B) {
 	return func(b *testing.B) {
-		degree := 2
+		order := 1
 		xs := make([]float64, n+1)
 		for i := 0; i < n+1; i++ {
 			xs[i] = float64(i) / float64(n)
 		}
-		mesh, err := NewMeshSimple1D(xs, degree)
+		mesh, err := NewMeshSimple1D(xs, order)
 		if err != nil {
 			b.Error(err)
 		}
