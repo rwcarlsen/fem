@@ -62,6 +62,20 @@ func (s *Sparse) Set(i, j int, v float64) {
 	s.nonzeroRow[j][i] = v
 }
 
+// Permute maps i and j indices to new i and j values idendified by the given
+// mapping.  Values stored in s.At(i,j) are stored into a newly created sparse
+// matrix at new.At(mapping[i], mapping[j]).  The permuted matrix is returned
+// and the original remains unmodified.
+func (s *Sparse) Permute(mapping []int) *Sparse {
+	clone := NewSparse(s.size)
+	for i := 0; i < s.size; i++ {
+		for j, val := range s.NonzeroCols(i) {
+			clone.Set(mapping[i], mapping[j], val)
+		}
+	}
+	return clone
+}
+
 func RowCombination(s *Sparse, rowsrc, rowdst int, mult float64) {
 	for col, srcval := range s.NonzeroCols(rowsrc) {
 		//fmt.Printf("        A(%v,%v) += A(%v,%v)*%v\n", rowdst, col, rowsrc, col, mult)
@@ -76,38 +90,8 @@ func RowMult(s *Sparse, row int, mult float64) {
 	}
 }
 
-func (s *Sparse) PermuteCols(indices []int) *Sparse {
-	clone := NewSparse(s.size)
-	for j, jnew := range indices {
-		for i, val := range s.NonzeroRows(j) {
-			clone.Set(i, jnew, val)
-		}
-	}
-	return clone
-}
-
-func (s *Sparse) PermuteRows(indices []int) *Sparse {
-	clone := NewSparse(s.size)
-	for i, inew := range indices {
-		for j, val := range s.NonzeroCols(i) {
-			clone.Set(inew, j, val)
-		}
-	}
-	return clone
-}
-
-func (s *Sparse) Permute(mapping []int) *Sparse {
-	clone := NewSparse(s.size)
-	for i := 0; i < s.size; i++ {
-		for j, val := range s.NonzeroCols(i) {
-			clone.Set(mapping[i], mapping[j], val)
-		}
-	}
-	return clone
-}
-
-// CM provides an alternate degree-of-freedom reordering in assembled matrix that provides better
-// bandwidth properties for solvers.
+// CM provides an alternate degree-of-freedom reordering in assembled matrix
+// that provides better bandwidth properties for solvers.
 func CM(A *Sparse) []int {
 	size, _ := A.Dims()
 	mapping := make(map[int]int, size)
@@ -241,7 +225,10 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 	return x
 }
 
-// dir = -1 for below diagonal and 1 for above diagonal
+// applyPivot uses the given pivot row to multiply and add to all other rows
+// in A either above or below the pivot (dir = -1 for below pivot and 1 for
+// above pivot) in order to zero out the given column.  The appropriate
+// operations are also performed on b to keep it in sync.
 func applyPivot(A *Sparse, b []float64, col int, piv int, dir int) {
 	pval := A.At(piv, col)
 	bval := b[piv]
