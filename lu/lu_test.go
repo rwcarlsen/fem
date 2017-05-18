@@ -259,9 +259,35 @@ func TestGaussJordanSym(t *testing.T) {
 	}
 }
 
-func BenchmarkGonumLU(b *testing.B) {
+func TestCGSolve(t *testing.T) {
 	size := 5000
 	nfill := 4 // number filled entries per row
+	maxiter := 1000
+	tol := 1e-6
+
+	s := randSparse(size, nfill, 0)
+	f := make([]float64, size)
+	for i := range f {
+		f[i] = 1
+	}
+
+	d := mat64.DenseCopyOf(s)
+	var want mat64.Vector
+	want.SolveVec(d, mat64.NewVector(size, f))
+
+	cg := &CG{MaxIter: maxiter, Tol: tol}
+	got, _ := cg.Solve(s, f)
+	t.Logf("converged in %v iterations", cg.Niter)
+	for i := range got {
+		if math.Abs(got[i]-want.At(i, 0)) > tol {
+			t.Fatalf("solutions don't match")
+		}
+	}
+}
+
+func BenchmarkGonumLU(b *testing.B) {
+	size := 5000
+	nfill := 6 // number filled entries per row
 
 	s := mat64.NewDense(size, size, nil)
 	for i := 0; i < size; i++ {
@@ -295,7 +321,7 @@ func BenchmarkGonumLU(b *testing.B) {
 
 func BenchmarkGaussJordanSym(b *testing.B) {
 	size := 5000
-	nfill := 4 // number filled entries per row
+	nfill := 6 // number filled entries per row
 
 	s := randSparse(size, nfill, 0)
 
@@ -311,35 +337,9 @@ func BenchmarkGaussJordanSym(b *testing.B) {
 	}
 }
 
-func TestCGSolve(t *testing.T) {
-	size := 5000
-	nfill := 4 // number filled entries per row
-	maxiter := 1000
-	tol := 1e-6
-
-	s := randSparse(size, nfill, 0)
-	f := make([]float64, size)
-	for i := range f {
-		f[i] = 1
-	}
-
-	d := mat64.DenseCopyOf(s)
-	var want mat64.Vector
-	want.SolveVec(d, mat64.NewVector(size, f))
-
-	cg := &CG{MaxIter: maxiter, Tol: tol}
-	got, _ := cg.Solve(s, f)
-	t.Logf("converged in %v iterations", cg.Niter)
-	for i := range got {
-		if math.Abs(got[i]-want.At(i, 0)) > tol {
-			t.Fatalf("solutions don't match")
-		}
-	}
-}
-
 func BenchmarkCGSolve(b *testing.B) {
 	size := 5000
-	nfill := 4 // number filled entries per row
+	nfill := 6 // number filled entries per row
 
 	s := randSparse(size, nfill, 0)
 
