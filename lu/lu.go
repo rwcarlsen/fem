@@ -2,6 +2,7 @@ package lu
 
 import (
 	"math"
+	"sort"
 
 	"github.com/gonum/matrix/mat64"
 )
@@ -90,16 +91,15 @@ func RCM(A *Sparse) []int {
 	size, _ := A.Dims()
 	mapping := make(map[int]int, size)
 
-	// find row with farthest left centroid
-	minnonzeros := 1000000000
-	startrow := -1
-	for i := 0; i < size; i++ {
-		cols := A.NonzeroCols(i)
-		if len(cols) < minnonzeros {
-			minnonzeros = len(cols)
-			startrow = i
-		}
+	degreemap := make([]int, size)
+	for i := range degreemap {
+		degreemap[i] = i
 	}
+
+	sort.SliceStable(degreemap, func(i, j int) bool {
+		return len(A.NonzeroCols(degreemap[i])) < len(A.NonzeroCols(degreemap[j]))
+	})
+	startrow := degreemap[0]
 
 	// breadth-first search across adjacency/connections between nodes/dofs
 	nextlevel := []int{startrow}
@@ -107,14 +107,12 @@ func RCM(A *Sparse) []int {
 		if len(nextlevel) == 0 {
 			// Matrix must not represent a fully connected graph. We need to choose a random dof/index
 			// that we haven't remapped yet to start from
-			newstart := -1
-			for k := 0; k < size; k++ {
+			for _, k := range degreemap {
 				if _, ok := mapping[k]; !ok {
-					newstart = k
+					nextlevel = []int{k}
 					break
 				}
 			}
-			nextlevel = []int{newstart}
 		}
 
 		for _, i := range nextlevel {

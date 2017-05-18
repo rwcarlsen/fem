@@ -11,11 +11,11 @@ import (
 func TestRCM_big(t *testing.T) {
 	size := 35
 	nfill := 6
-	big := randSparse(size, nfill)
+	big := randSparse(size, nfill, 8)
 	mapping := RCM(big)
 	permuted := big.Permute(mapping)
-	t.Logf("original=\n% v\n", mat64.Formatted(big), mat64.DotByte(' '))
-	t.Logf("permuted=\n% v\n", mat64.Formatted(permuted), mat64.DotByte(' '))
+	t.Logf("original=\n% v\n", mat64.Formatted(big))
+	t.Logf("permuted=\n% v\n", mat64.Formatted(permuted))
 }
 
 func TestRCM(t *testing.T) {
@@ -295,7 +295,7 @@ func BenchmarkGaussJordanSym(b *testing.B) {
 	size := 5000
 	nfill := 4 // number filled entries per row
 
-	s := randSparse(size, nfill)
+	s := randSparse(size, nfill, 0)
 
 	f := make([]float64, size)
 	for i := range f {
@@ -308,7 +308,7 @@ func BenchmarkGaussJordanSym(b *testing.B) {
 	}
 }
 
-func randSparse(size, fillPerRow int) *Sparse {
+func randSparse(size, fillPerRow int, off float64) *Sparse {
 	s := NewSparse(size)
 	for i := 0; i < size; i++ {
 		s.Set(i, i, 9)
@@ -324,7 +324,11 @@ func randSparse(size, fillPerRow int) *Sparse {
 			if i == j {
 				continue
 			}
-			v := rand.Float64()
+
+			v := off
+			if v == 0 {
+				v = rand.Float64()
+			}
 			s.Set(i, j, v)
 			s.Set(j, i, v)
 		}
