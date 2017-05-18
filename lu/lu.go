@@ -216,40 +216,12 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 		pivots[j] = piv
 		donerows[piv] = true
 
-		pval := A.At(piv, j)
-		bval := b[piv]
-		for i, aij := range A.NonzeroRows(j) {
-			if i != piv && i > piv {
-				mult := -aij / pval
-				//fmt.Printf("   pivot times %v plus row %v\n", mult, i)
-				RowCombination(A, piv, i, mult)
-				b[i] += bval * mult
-			} else {
-				//fmt.Printf("    skipping row %v which is (above) the pivot\n", i)
-			}
-		}
-		//fmt.Printf("after:\n%.2v\n", mat64.Formatted(A))
+		applyPivot(A, b, j, piv, -1)
 	}
 
 	// second pass
 	for j := size - 1; j >= 0; j-- {
-		piv := pivots[j]
-		//fmt.Printf("selected row %v as pivot\n", piv)
-		//fmt.Printf("Num nonzeros for col %v is %v\n", j, len(A.nonzeroRow[j]))
-
-		pval := A.At(piv, j)
-		bval := b[piv]
-		for i, aij := range A.NonzeroRows(j) {
-			if i != piv && i < piv {
-				mult := -aij / pval
-				//fmt.Printf("   pivot times %v plus row %v\n", mult, i)
-				RowCombination(A, piv, i, mult)
-				b[i] += bval * mult
-			} else {
-				//fmt.Printf("    skipping row %v which is (below) the pivot\n", i)
-			}
-		}
-		//fmt.Printf("after:\n%.2v\n", mat64.Formatted(A))
+		applyPivot(A, b, j, pivots[j], 1)
 	}
 
 	// renormalize each row so that leading nonzeros are ones (row echelon to
@@ -267,4 +239,20 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 	}
 
 	return x
+}
+
+// dir = -1 for below diagonal and 1 for above diagonal
+func applyPivot(A *Sparse, b []float64, col int, piv int, dir int) {
+	pval := A.At(piv, col)
+	bval := b[piv]
+	for i, aij := range A.NonzeroRows(col) {
+		cond := ((dir == -1) && i > piv) || ((dir == 1) && i < piv)
+		if i != piv && cond {
+			mult := -aij / pval
+			//fmt.Printf("   pivot times %v plus row %v\n", mult, i)
+			RowCombination(A, piv, i, mult)
+			b[i] += bval * mult
+		}
+	}
+	//fmt.Printf("after:\n%.2v\n", mat64.Formatted(A))
 }
