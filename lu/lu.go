@@ -180,7 +180,7 @@ func GaussJordanSym(A *Sparse, b []float64) []float64 {
 	// re-sequence solution based on CM permutation/reordering
 	xx := make([]float64, size)
 	for i, inew := range mapping {
-		xx[inew] = x[i]
+		xx[i] = x[inew]
 	}
 	return xx
 }
