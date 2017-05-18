@@ -27,6 +27,9 @@ type Mesh struct {
 	// Conv is the coordinate conversion function/logic used for calculating solutions at
 	// arbitrary points on the mesh.
 	Conv Converter
+	// Solver is the solver to use - if nil, a two-pass Gaussian-Jordan elimination algorithm is
+	// used.
+	Solver lu.Solver
 	// Bandwidth is the maximum off-diagonal distance that will be used for solving - other
 	// entries are assumed zero.  If bandwidth is zero, the full dense matrix will be
 	// computed/solved.
@@ -146,32 +149,18 @@ func (m *Mesh) reset() {
 // overwritten.  This solves the system K*u=f for u where K is the stiffness matrix
 // and f is the force matrix.
 func (m *Mesh) Solve(k Kernel) error {
+	solver := m.Solver
+	if solver == nil {
+		solver = lu.GaussJordan{}
+	}
+
 	m.reset()
 	A := m.StiffnessMatrix(k)
 	b := m.ForceMatrix(k)
-
-	var u mat64.Vector
-	if err := u.SolveVec(A, b); err != nil {
+	x, err := solver.Solve(A, b.RawVector().Data)
+	if err != nil {
 		return err
 	}
-
-	for i := 0; i < u.Len(); i++ {
-		nodes := m.indexNode[i]
-		for _, n := range nodes {
-			n.U = u.At(i, 0)
-			n.W = 1
-		}
-	}
-	return nil
-}
-
-// SolveSparse
-func (m *Mesh) SolveSparse(k Kernel) error {
-	m.reset()
-	A := m.StiffnessMatrix(k)
-	b := m.ForceMatrix(k)
-
-	x := lu.GaussJordan(A, b.RawVector().Data)
 
 	for i, val := range x {
 		nodes := m.indexNode[i]
@@ -181,27 +170,6 @@ func (m *Mesh) SolveSparse(k Kernel) error {
 		}
 	}
 	return nil
-}
-
-// SolveIter uses a symmetric (forward-backward) Gauss-Seidel iterative algorithm with successive
-// over relaxation to solve the system.
-func (m *Mesh) SolveIter(k Kernel, maxiter int, tol float64) (iter int, err error) {
-	m.reset()
-	b := m.ForceMatrix(k)
-	Ai := func(row int) *mat64.Vector { return m.StiffnessRow(k, row) }
-
-	solver := &GaussSeidel{maxiter, tol}
-	soln, n := solver.Solve(Ai, b)
-
-	// update DOF/nodes with discovered solution
-	for i := 0; i < soln.Len(); i++ {
-		nodes := m.indexNode[i]
-		for _, n := range nodes {
-			n.U = soln.At(i, 0)
-			n.W = 1
-		}
-	}
-	return n, nil
 }
 
 // ForceMatrix builds the matrix with one entry for each node representing the

@@ -1,6 +1,7 @@
 package lu
 
 import (
+	"fmt"
 	"math"
 	"sort"
 
@@ -70,6 +71,18 @@ func (s *Sparse) Permute(mapping []int) *Sparse {
 		}
 	}
 	return clone
+}
+
+func (s *Sparse) Mul(b []float64) []float64 {
+	result := make([]float64, len(b))
+	for i := 0; i < s.size; i++ {
+		tot := 0.0
+		for j, val := range s.NonzeroCols(i) {
+			tot += b[j] * val
+		}
+		result[i] = tot
+	}
+	return result
 }
 
 func RowCombination(s *Sparse, pivrow, dstrow int, mult float64) {
@@ -153,9 +166,54 @@ func nextRCMLevel(A *Sparse, mapping map[int]int, ii []int) []int {
 	return nextlevel
 }
 
-// GaussJordanSymm uses the Cuthill-McKee algorithm to permute the matrix
-// indices/DOF to have a smaller bandwidth.
-func GaussJordanSym(A *Sparse, b []float64) []float64 {
+type Solver interface {
+	Solve(A *Sparse, b []float64) (soln []float64, err error)
+	Status() string
+}
+
+// CG implements a linear conjugate gradient solver (see
+// http://wikipedia.org/wiki/Conjugate_gradient_method)
+type CG struct {
+	MaxIter int
+	Tol     float64
+	Niter   int
+}
+
+func (cg *CG) Status() string { return fmt.Sprintf("converged in %v iterations", cg.Niter) }
+
+func (cg *CG) Solve(A *Sparse, b []float64) (x []float64, err error) {
+	size := len(b)
+
+	x = make([]float64, size)
+	r := make([]float64, size)
+	p := make([]float64, size)
+	rnext := make([]float64, size)
+
+	vecSub(r, b, A.Mul(x))
+	copy(p, r)
+
+	for cg.Niter = 0; cg.Niter < cg.MaxIter; cg.Niter++ {
+		alpha := dot(r, r) / dot(p, A.Mul(p))
+		vecAdd(x, x, vecMult(p, alpha))            // xnext = x+alpha*p
+		vecSub(rnext, r, vecMult(A.Mul(p), alpha)) // rnext = r-alpha*A*p
+		if math.Sqrt(dot(rnext, rnext)) < cg.Tol {
+			break
+		}
+		beta := dot(rnext, rnext) / dot(r, r)
+		vecAdd(p, rnext, vecMult(p, beta)) // pnext = rnext + beta*p
+		r, rnext = rnext, r
+	}
+
+	return x, nil
+}
+
+// GaussJordanSymm uses gaussian elimination with the Cuthill-McKee algorithm to permute the
+// matrix indices/DOF to have a smaller bandwidth.
+type GaussJordanSym struct{}
+
+func (_ GaussJordanSym) Status() string { return "" }
+
+func (_ GaussJordanSym) Solve(A *Sparse, b []float64) ([]float64, error) {
 	size, _ := A.Dims()
 
 	mapping := RCM(A)
@@ -164,17 +222,38 @@ func GaussJordanSym(A *Sparse, b []float64) []float64 {
 	for i, inew := range mapping {
 		bb[inew] = b[i]
 	}
-	x := GaussJordan(AA, bb)
+
+	x, err := GaussJordan{}.Solve(AA, bb)
+	if err != nil {
+		return nil, err
+	}
 
 	// re-sequence solution based on RCM permutation/reordering
 	xx := make([]float64, size)
 	for i, inew := range mapping {
 		xx[i] = x[inew]
 	}
-	return xx
+	return xx, nil
 }
 
-func GaussJordan(A *Sparse, b []float64) []float64 {
+type DenseLU struct{}
+
+func (_ DenseLU) Status() string { return "" }
+
+func (_ DenseLU) Solve(A *Sparse, b []float64) ([]float64, error) {
+	var u mat64.Vector
+	if err := u.SolveVec(A, mat64.NewVector(len(b), b)); err != nil {
+		return nil, err
+	}
+	return u.RawVector().Data, nil
+
+}
+
+type GaussJordan struct{}
+
+func (_ GaussJordan) Status() string { return "" }
+
+func (_ GaussJordan) Solve(A *Sparse, b []float64) ([]float64, error) {
 	size, _ := A.Dims()
 
 	// Using pivot rows (usually along the diagonal), eliminate all entries
@@ -226,7 +305,7 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 		x[i] = b[pivots[i]]
 	}
 
-	return x
+	return x, nil
 }
 
 // applyPivot uses the given pivot row to multiply and add to all other rows
@@ -246,4 +325,42 @@ func applyPivot(A *Sparse, b []float64, col int, piv int, dir int) {
 		}
 	}
 	//fmt.Printf("after:\n%.2v\n", mat64.Formatted(A))
+}
+
+func vecAdd(result, a, b []float64) {
+	if len(a) != len(b) {
+		panic("inconsistent lengths for vector subtraction")
+	}
+	for i := range a {
+		result[i] = a[i] + b[i]
+	}
+}
+
+func vecSub(result, a, b []float64) {
+	if len(a) != len(b) {
+		panic("inconsistent lengths for vector subtraction")
+	}
+	for i := range a {
+		result[i] = a[i] - b[i]
+	}
+}
+
+// dot performs a vector*vector dot product.
+func dot(a, b []float64) float64 {
+	if len(a) != len(b) {
+		panic("inconsistent lengths for dot product")
+	}
+	v := 0.0
+	for i := range a {
+		v += a[i] * b[i]
+	}
+	return v
+}
+
+func vecMult(v []float64, mult float64) []float64 {
+	result := make([]float64, len(v))
+	for i := range v {
+		result[i] = mult * v[i]
+	}
+	return result
 }

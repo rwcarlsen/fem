@@ -8,15 +8,16 @@ import (
 	"runtime/pprof"
 
 	"github.com/gonum/matrix/mat64"
+	"github.com/rwcarlsen/fem/lu"
 )
 
 var printmats = flag.Bool("print", false, "print stiffness and force matrices")
 var nnodes = flag.Int("nodes", 5, "number of nodes/domain divisions-1")
 var order = flag.Int("order", 2, "lagrange shape function order")
-var iter = flag.Int("iter", -1, "number of iterations for solve (default=direct)")
-var l2tol = flag.Float64("tol", 1e-5, "l2 norm consecutive iterative soln diff threshold")
+var iter = flag.Int("iter", 1000, "number of iterations for solve (default=direct)")
+var usertol = flag.Float64("tol", 1e-5, "l2 norm consecutive iterative soln diff threshold")
 var nsoln = flag.Int("nsol", 10, "number of uniformly distributed points to sample+print solution over")
-var useDense = flag.Bool("dense", false, "use a dense matrix LU solver")
+var solver = flag.String("solver", "gaussian", "solver type (gaussian, denselu, cg)")
 
 var cpuprofile = flag.String("cpuprofile", "", "profile file name")
 
@@ -68,17 +69,20 @@ func TestHeatKernel() {
 		fmt.Printf("force:\n%.5v\n", mat64.Formatted(force))
 	}
 
-	if *iter < 1 && *useDense {
-		err = mesh.Solve(hc)
-		check(err)
-	} else if *iter < 1 && !*useDense {
-		err = mesh.SolveSparse(hc)
-		check(err)
-	} else {
-		iter, err := mesh.SolveIter(hc, *iter, *l2tol)
-		check(err)
-		log.Printf("converged after %v iterations", iter)
+	switch *solver {
+	case "gaussian":
+		mesh.Solver = lu.GaussJordan{}
+	case "cg":
+		mesh.Solver = &lu.CG{MaxIter: *iter, Tol: *usertol}
+	case "denselu":
+		mesh.Solver = lu.DenseLU{}
+	default:
+		log.Fatalf("unrecognized solver %v", *solver)
 	}
+
+	err = mesh.Solve(hc)
+	check(err)
+	log.Print(mesh.Solver.Status())
 
 	fmt.Println("Solution:")
 	for i := 0; i < *nsoln+1; i++ {
