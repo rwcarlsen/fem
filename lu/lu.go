@@ -42,15 +42,10 @@ func (s *Sparse) Dims() (int, int)    { return s.size, s.size }
 func (s *Sparse) At(i, j int) float64 { return s.nonzeroCol[i][j] }
 func (s *Sparse) Set(i, j int, v float64) {
 	if math.Abs(v) < eps {
-		//fmt.Printf("        Set(%v,%v) to zero\n", i, j)
 		delete(s.nonzeroCol[i], j)
 		delete(s.nonzeroRow[j], i)
 		return
 	}
-
-	//fmt.Printf("        Set(%v,%v)=%v and added nonzero col+row\n", i, j, v)
-	//fmt.Printf("            nonzeroRows(%v)=%v\n", j, s.nonzeroRow[j])
-	//fmt.Printf("            nonzeroCols(%v)=%v\n", i, s.nonzeroCol[i])
 	if s.nonzeroCol[i] == nil {
 		s.nonzeroCol[i] = make(map[int]float64)
 	}
@@ -76,17 +71,16 @@ func (s *Sparse) Permute(mapping []int) *Sparse {
 	return clone
 }
 
-func RowCombination(s *Sparse, rowsrc, rowdst int, mult float64) {
-	for col, srcval := range s.NonzeroCols(rowsrc) {
-		//fmt.Printf("        A(%v,%v) += A(%v,%v)*%v\n", rowdst, col, rowsrc, col, mult)
-		s.Set(rowdst, col, s.At(rowdst, col)+srcval*mult)
+func RowCombination(s *Sparse, pivrow, dstrow int, mult float64) {
+	for col, aij := range s.NonzeroCols(pivrow) {
+		s.Set(dstrow, col, s.At(dstrow, col)+pivval*mult)
 	}
 }
 
 func RowMult(s *Sparse, row int, mult float64) {
 	cols := s.NonzeroCols(row)
-	for col := range cols {
-		s.Set(row, col, s.At(row, col)*mult)
+	for col, val := range cols {
+		s.Set(row, col, val*mult)
 	}
 }
 
@@ -196,7 +190,6 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 			}
 		}
 		//fmt.Printf("selected row %v as pivot\n", piv)
-		//fmt.Printf("Num nonzeros for col %v is %v\n", j, len(A.nonzeroRow[j]))
 		pivots[j] = piv
 		donerows[piv] = true
 
