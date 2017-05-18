@@ -1,4 +1,4 @@
-package lu
+package sparse
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 
 const eps = 1e-6
 
-type Sparse struct {
+type Matrix struct {
 	// map[col]map[row]val
 	nonzeroRow []map[int]float64
 	// map[row]map[col]val
@@ -18,17 +18,17 @@ type Sparse struct {
 	size       int
 }
 
-func NewSparse(size int) *Sparse {
-	return &Sparse{
+func New(size int) *Matrix {
+	return &Matrix{
 		nonzeroRow: make([]map[int]float64, size),
 		nonzeroCol: make([]map[int]float64, size),
 		size:       size,
 	}
 }
 
-func (s *Sparse) Clone() *Sparse {
-	clone := NewSparse(s.size)
-	for i, m := range s.nonzeroCol {
+func (m *Matrix) Clone() *Matrix {
+	clone := New(m.size)
+	for i, m := range m.nonzeroCol {
 		for j, v := range m {
 			clone.Set(i, j, v)
 		}
@@ -36,48 +36,48 @@ func (s *Sparse) Clone() *Sparse {
 	return clone
 }
 
-func (s *Sparse) NonzeroRows(col int) (rows map[int]float64) { return s.nonzeroRow[col] }
-func (s *Sparse) NonzeroCols(row int) (cols map[int]float64) { return s.nonzeroCol[row] }
+func (m *Matrix) NonzeroRows(col int) (rows map[int]float64) { return m.nonzeroRow[col] }
+func (m *Matrix) NonzeroCols(row int) (cols map[int]float64) { return m.nonzeroCol[row] }
 
-func (s *Sparse) T() mat64.Matrix     { return mat64.Transpose{s} }
-func (s *Sparse) Dims() (int, int)    { return s.size, s.size }
-func (s *Sparse) At(i, j int) float64 { return s.nonzeroCol[i][j] }
-func (s *Sparse) Set(i, j int, v float64) {
+func (m *Matrix) T() mat64.Matrix     { return mat64.Transpose{m} }
+func (m *Matrix) Dims() (int, int)    { return m.size, m.size }
+func (m *Matrix) At(i, j int) float64 { return m.nonzeroCol[i][j] }
+func (m *Matrix) Set(i, j int, v float64) {
 	if math.Abs(v) < eps {
-		delete(s.nonzeroCol[i], j)
-		delete(s.nonzeroRow[j], i)
+		delete(m.nonzeroCol[i], j)
+		delete(m.nonzeroRow[j], i)
 		return
 	}
-	if s.nonzeroCol[i] == nil {
-		s.nonzeroCol[i] = make(map[int]float64)
+	if m.nonzeroCol[i] == nil {
+		m.nonzeroCol[i] = make(map[int]float64)
 	}
-	if s.nonzeroRow[j] == nil {
-		s.nonzeroRow[j] = make(map[int]float64)
+	if m.nonzeroRow[j] == nil {
+		m.nonzeroRow[j] = make(map[int]float64)
 	}
 
-	s.nonzeroCol[i][j] = v
-	s.nonzeroRow[j][i] = v
+	m.nonzeroCol[i][j] = v
+	m.nonzeroRow[j][i] = v
 }
 
 // Permute maps i and j indices to new i and j values idendified by the given
-// mapping.  Values stored in s.At(i,j) are stored into a newly created sparse
+// mapping.  Values stored in m.At(i,j) are stored into a newly created sparse
 // matrix at new.At(mapping[i], mapping[j]).  The permuted matrix is returned
 // and the original remains unmodified.
-func (s *Sparse) Permute(mapping []int) *Sparse {
-	clone := NewSparse(s.size)
-	for i := 0; i < s.size; i++ {
-		for j, val := range s.NonzeroCols(i) {
+func (m *Matrix) Permute(mapping []int) *Matrix {
+	clone := New(m.size)
+	for i := 0; i < m.size; i++ {
+		for j, val := range m.NonzeroCols(i) {
 			clone.Set(mapping[i], mapping[j], val)
 		}
 	}
 	return clone
 }
 
-func (s *Sparse) Mul(b []float64) []float64 {
+func (m *Matrix) Mul(b []float64) []float64 {
 	result := make([]float64, len(b))
-	for i := 0; i < s.size; i++ {
+	for i := 0; i < m.size; i++ {
 		tot := 0.0
-		for j, val := range s.NonzeroCols(i) {
+		for j, val := range m.NonzeroCols(i) {
 			tot += b[j] * val
 		}
 		result[i] = tot
@@ -85,22 +85,22 @@ func (s *Sparse) Mul(b []float64) []float64 {
 	return result
 }
 
-func RowCombination(s *Sparse, pivrow, dstrow int, mult float64) {
-	for col, aij := range s.NonzeroCols(pivrow) {
-		s.Set(dstrow, col, s.At(dstrow, col)+aij*mult)
+func RowCombination(m *Matrix, pivrow, dstrow int, mult float64) {
+	for col, aij := range m.NonzeroCols(pivrow) {
+		m.Set(dstrow, col, m.At(dstrow, col)+aij*mult)
 	}
 }
 
-func RowMult(s *Sparse, row int, mult float64) {
-	cols := s.NonzeroCols(row)
+func RowMult(m *Matrix, row int, mult float64) {
+	cols := m.NonzeroCols(row)
 	for col, val := range cols {
-		s.Set(row, col, val*mult)
+		m.Set(row, col, val*mult)
 	}
 }
 
 // RCM provides an alternate degree-of-freedom reordering in assembled matrix
 // that provides better bandwidth properties for solvers.
-func RCM(A *Sparse) []int {
+func RCM(A *Matrix) []int {
 	size, _ := A.Dims()
 	mapping := make(map[int]int, size)
 
@@ -154,7 +154,7 @@ func RCM(A *Sparse) []int {
 	return slice
 }
 
-func nextRCMLevel(A *Sparse, mapping map[int]int, ii []int) []int {
+func nextRCMLevel(A *Matrix, mapping map[int]int, ii []int) []int {
 	var nextlevel []int
 	for _, i := range ii {
 		for j := range A.NonzeroCols(i) {
@@ -167,7 +167,7 @@ func nextRCMLevel(A *Sparse, mapping map[int]int, ii []int) []int {
 }
 
 type Solver interface {
-	Solve(A *Sparse, b []float64) (soln []float64, err error)
+	Solve(A *Matrix, b []float64) (soln []float64, err error)
 	Status() string
 }
 
@@ -181,7 +181,7 @@ type CG struct {
 
 func (cg *CG) Status() string { return fmt.Sprintf("converged in %v iterations", cg.Niter) }
 
-func (cg *CG) Solve(A *Sparse, b []float64) (x []float64, err error) {
+func (cg *CG) Solve(A *Matrix, b []float64) (x []float64, err error) {
 	size := len(b)
 
 	x = make([]float64, size)
@@ -213,7 +213,7 @@ type GaussJordanSym struct{}
 
 func (_ GaussJordanSym) Status() string { return "" }
 
-func (_ GaussJordanSym) Solve(A *Sparse, b []float64) ([]float64, error) {
+func (_ GaussJordanSym) Solve(A *Matrix, b []float64) ([]float64, error) {
 	size, _ := A.Dims()
 
 	mapping := RCM(A)
@@ -240,7 +240,7 @@ type DenseLU struct{}
 
 func (_ DenseLU) Status() string { return "" }
 
-func (_ DenseLU) Solve(A *Sparse, b []float64) ([]float64, error) {
+func (_ DenseLU) Solve(A *Matrix, b []float64) ([]float64, error) {
 	var u mat64.Vector
 	if err := u.SolveVec(A, mat64.NewVector(len(b), b)); err != nil {
 		return nil, err
@@ -253,7 +253,7 @@ type GaussJordan struct{}
 
 func (_ GaussJordan) Status() string { return "" }
 
-func (_ GaussJordan) Solve(A *Sparse, b []float64) ([]float64, error) {
+func (_ GaussJordan) Solve(A *Matrix, b []float64) ([]float64, error) {
 	size, _ := A.Dims()
 
 	// Using pivot rows (usually along the diagonal), eliminate all entries
@@ -312,7 +312,7 @@ func (_ GaussJordan) Solve(A *Sparse, b []float64) ([]float64, error) {
 // in A either above or below the pivot (dir = -1 for below pivot and 1 for
 // above pivot) in order to zero out the given column.  The appropriate
 // operations are also performed on b to keep it in sync.
-func applyPivot(A *Sparse, b []float64, col int, piv int, dir int) {
+func applyPivot(A *Matrix, b []float64, col int, piv int, dir int) {
 	pval := A.At(piv, col)
 	bval := b[piv]
 	for i, aij := range A.NonzeroRows(col) {

@@ -1,4 +1,4 @@
-package lu
+package sparse
 
 import (
 	"math"
@@ -64,7 +64,7 @@ func TestRCM(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		A := NewSparse(test.size)
+		A := New(test.size)
 		for i := 0; i < test.size; i++ {
 			for j := 0; j < test.size; j++ {
 				A.Set(i, j, test.vals[i*test.size+j])
@@ -140,7 +140,7 @@ func TestGaussJordan(t *testing.T) {
 	for i, test := range tests {
 		size := len(test.b)
 
-		A := NewSparse(size)
+		A := New(size)
 		for i := 0; i < size; i++ {
 			for j := 0; j < size; j++ {
 				A.Set(i, j, test.vals[i*size+j])
@@ -224,7 +224,7 @@ func TestGaussJordanSym(t *testing.T) {
 		t.Logf("test %v:", i+1)
 		size := len(test.b)
 
-		A := NewSparse(size)
+		A := New(size)
 		for i := 0; i < size; i++ {
 			for j := 0; j < size; j++ {
 				A.Set(i, j, test.vals[i*size+j])
@@ -358,8 +358,8 @@ func BenchmarkCGSolve(b *testing.B) {
 	}
 }
 
-func randSparse(size, fillPerRow int, off float64) *Sparse {
-	s := NewSparse(size)
+func randSparse(size, fillPerRow int, off float64) *Matrix {
+	s := New(size)
 	for i := 0; i < size; i++ {
 		s.Set(i, i, 9)
 	}

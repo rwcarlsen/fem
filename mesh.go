@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/gonum/matrix/mat64"
-	"github.com/rwcarlsen/fem/lu"
+	"github.com/rwcarlsen/fem/sparse"
 )
 
 // Mesh represents a collection of elements constituting an approximation for
@@ -29,7 +29,7 @@ type Mesh struct {
 	Conv Converter
 	// Solver is the solver to use - if nil, a two-pass Gaussian-Jordan elimination algorithm is
 	// used.
-	Solver lu.Solver
+	Solver sparse.Solver
 	// Bandwidth is the maximum off-diagonal distance that will be used for solving - other
 	// entries are assumed zero.  If bandwidth is zero, the full dense matrix will be
 	// computed/solved.
@@ -151,7 +151,7 @@ func (m *Mesh) reset() {
 func (m *Mesh) Solve(k Kernel) error {
 	solver := m.Solver
 	if solver == nil {
-		solver = lu.GaussJordan{}
+		solver = sparse.GaussJordan{}
 	}
 
 	m.reset()
@@ -225,10 +225,10 @@ func (m *Mesh) StiffnessRow(k Kernel, row int) *mat64.Vector {
 // node test and weight functions representing the result of the integration
 // terms of the weak form of the differential equation in k that
 // include/depend on u(x).  This is the K matrix in the equation the K*u=f.
-func (m *Mesh) StiffnessMatrix(k Kernel) *lu.Sparse {
+func (m *Mesh) StiffnessMatrix(k Kernel) *sparse.Matrix {
 	m.finalize()
 	size := m.NumDOF()
-	mat := lu.NewSparse(size)
+	mat := sparse.New(size)
 
 	for e, elem := range m.Elems {
 		for i, n := range elem.Nodes() {

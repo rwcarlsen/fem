@@ -8,7 +8,7 @@ import (
 	"runtime/pprof"
 
 	"github.com/gonum/matrix/mat64"
-	"github.com/rwcarlsen/fem/lu"
+	"github.com/rwcarlsen/fem/sparse"
 )
 
 var printmats = flag.Bool("print", false, "print stiffness and force matrices")
@@ -71,11 +71,11 @@ func TestHeatKernel() {
 
 	switch *solver {
 	case "gaussian":
-		mesh.Solver = lu.GaussJordan{}
+		mesh.Solver = sparse.GaussJordan{}
 	case "cg":
-		mesh.Solver = &lu.CG{MaxIter: *iter, Tol: *usertol}
+		mesh.Solver = &sparse.CG{MaxIter: *iter, Tol: *usertol}
 	case "denselu":
-		mesh.Solver = lu.DenseLU{}
+		mesh.Solver = sparse.DenseLU{}
 	default:
 		log.Fatalf("unrecognized solver %v", *solver)
 	}
