@@ -73,7 +73,7 @@ func (s *Sparse) Permute(mapping []int) *Sparse {
 
 func RowCombination(s *Sparse, pivrow, dstrow int, mult float64) {
 	for col, aij := range s.NonzeroCols(pivrow) {
-		s.Set(dstrow, col, s.At(dstrow, col)+pivval*mult)
+		s.Set(dstrow, col, s.At(dstrow, col)+aij*mult)
 	}
 }
 
@@ -84,24 +84,19 @@ func RowMult(s *Sparse, row int, mult float64) {
 	}
 }
 
-// CM provides an alternate degree-of-freedom reordering in assembled matrix
+// RCM provides an alternate degree-of-freedom reordering in assembled matrix
 // that provides better bandwidth properties for solvers.
-func CM(A *Sparse) []int {
+func RCM(A *Sparse) []int {
 	size, _ := A.Dims()
 	mapping := make(map[int]int, size)
 
 	// find row with farthest left centroid
-	mincentroid := math.Inf(1)
+	minnonzeros := 1000000000
 	startrow := -1
 	for i := 0; i < size; i++ {
 		cols := A.NonzeroCols(i)
-		centroid := 0.0
-		for j := range cols {
-			centroid += float64(j)
-		}
-		centroid /= float64(len(cols))
-		if centroid < mincentroid {
-			mincentroid = centroid
+		if len(cols) < minnonzeros {
+			minnonzeros = len(cols)
 			startrow = i
 		}
 	}
@@ -109,6 +104,19 @@ func CM(A *Sparse) []int {
 	// breadth-first search across adjacency/connections between nodes/dofs
 	nextlevel := []int{startrow}
 	for n := 0; n < size; n++ {
+		if len(nextlevel) == 0 {
+			// Matrix must not represent a fully connected graph. We need to choose a random dof/index
+			// that we haven't remapped yet to start from
+			newstart := -1
+			for k := 0; k < size; k++ {
+				if _, ok := mapping[k]; !ok {
+					newstart = k
+					break
+				}
+			}
+			nextlevel = []int{newstart}
+		}
+
 		for _, i := range nextlevel {
 			if _, ok := mapping[i]; !ok {
 				mapping[i] = len(mapping)
@@ -117,20 +125,25 @@ func CM(A *Sparse) []int {
 		if len(mapping) >= size {
 			break
 		}
-		nextlevel = nextCMLevel(A, mapping, nextlevel)
+		nextlevel = nextRCMLevel(A, mapping, nextlevel)
 	}
 
 	slice := make([]int, size)
-	for i := range slice {
-		slice[i] = i
+
+	reverse := make([]int, size)
+	count := size - 1
+	for i := range reverse {
+		reverse[i] = count
+		count--
 	}
+
 	for from, to := range mapping {
-		slice[from] = to
+		slice[from] = reverse[to]
 	}
 	return slice
 }
 
-func nextCMLevel(A *Sparse, mapping map[int]int, ii []int) []int {
+func nextRCMLevel(A *Sparse, mapping map[int]int, ii []int) []int {
 	var nextlevel []int
 	for _, i := range ii {
 		for j := range A.NonzeroCols(i) {
@@ -147,7 +160,7 @@ func nextCMLevel(A *Sparse, mapping map[int]int, ii []int) []int {
 func GaussJordanSym(A *Sparse, b []float64) []float64 {
 	size, _ := A.Dims()
 
-	mapping := CM(A)
+	mapping := RCM(A)
 	AA := A.Permute(mapping)
 	bb := make([]float64, size)
 	for i, inew := range mapping {
@@ -155,7 +168,7 @@ func GaussJordanSym(A *Sparse, b []float64) []float64 {
 	}
 	x := GaussJordan(AA, bb)
 
-	// re-sequence solution based on CM permutation/reordering
+	// re-sequence solution based on RCM permutation/reordering
 	xx := make([]float64, size)
 	for i, inew := range mapping {
 		xx[i] = x[inew]
@@ -193,7 +206,7 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 		pivots[j] = piv
 		donerows[piv] = true
 
-		applyPivot(A, b, j, piv, -1)
+		applyPivot(A, b, j, pivots[j], -1)
 	}
 
 	// second pass

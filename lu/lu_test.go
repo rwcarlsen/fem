@@ -8,31 +8,17 @@ import (
 	"github.com/gonum/matrix/mat64"
 )
 
-func TestCM_big(t *testing.T) {
+func TestRCM_big(t *testing.T) {
 	size := 35
 	nfill := 6
-	big := NewSparse(size)
-	for i := 0; i < size; i++ {
-		big.Set(i, i, 8)
-	}
-
-	for i := 0; i < size; i++ {
-		for n := 0; n < nfill/2; n++ {
-			j := rand.Intn(size)
-			if i == j {
-				continue
-			}
-			big.Set(i, j, 8)
-			big.Set(j, i, 8)
-		}
-	}
-	mapping := CM(big)
+	big := randSparse(size, nfill)
+	mapping := RCM(big)
 	permuted := big.Permute(mapping)
 	t.Logf("original=\n% v\n", mat64.Formatted(big), mat64.DotByte(' '))
 	t.Logf("permuted=\n% v\n", mat64.Formatted(permuted), mat64.DotByte(' '))
 }
 
-func TestCM(t *testing.T) {
+func TestRCM(t *testing.T) {
 	var tests = []struct {
 		size    int
 		vals    []float64
@@ -42,20 +28,20 @@ func TestCM(t *testing.T) {
 			size: 4,
 			vals: []float64{
 				1, 0, 0, 0,
-				0, 2, 0, 0,
-				0, 0, 3, 0,
-				0, 0, 0, 4,
+				0, 1, 0, 0,
+				0, 0, 1, 0,
+				0, 0, 0, 1,
 			},
-			wantmap: []int{0, 1, 2, 3},
+			wantmap: []int{3, 2, 1, 0},
 		}, {
 			size: 4,
 			vals: []float64{
-				0, 2, 0, 0,
+				0, 1, 0, 0,
 				1, 0, 0, 0,
-				0, 0, 3, 0,
-				0, 0, 0, 4,
+				0, 0, 1, 0,
+				0, 0, 0, 1,
 			},
-			wantmap: []int{1, 0, 2, 3},
+			wantmap: []int{3, 2, 1, 0},
 		}, {
 			size: 4,
 			vals: []float64{
@@ -64,7 +50,7 @@ func TestCM(t *testing.T) {
 				0, 1, 1, 1,
 				0, 0, 1, 1,
 			},
-			wantmap: []int{0, 1, 2, 3},
+			wantmap: []int{3, 2, 1, 0},
 		}, {
 			size: 4,
 			vals: []float64{
@@ -73,7 +59,7 @@ func TestCM(t *testing.T) {
 				0, 0, 1, 1,
 				1, 1, 1, 1,
 			},
-			wantmap: []int{0, 1, 3, 2},
+			wantmap: []int{1, 0, 3, 2},
 		},
 	}
 
@@ -85,7 +71,7 @@ func TestCM(t *testing.T) {
 			}
 		}
 
-		got := CM(A)
+		got := RCM(A)
 
 		failed := false
 		for i := range got {
@@ -234,6 +220,7 @@ func TestGaussJordanSym(t *testing.T) {
 	}
 
 	for i, test := range tests {
+		t.Logf("test %v:", i+1)
 		size := len(test.b)
 
 		A := NewSparse(size)
@@ -261,8 +248,11 @@ func TestGaussJordanSym(t *testing.T) {
 		}
 
 		if failed {
-			t.Errorf("test %v A=\n%v\nb=%v", i+1, mat64.Formatted(refA), refb)
+			t.Errorf("test %v FAILED:", i+1)
+			t.Errorf("        A=\n%v\nb=%v", i+1, mat64.Formatted(refA), refb)
 			t.Errorf("    x: got %v, want %v", gotx, want)
+		} else {
+			t.Logf("    PASSED")
 		}
 	}
 }
@@ -305,23 +295,7 @@ func BenchmarkGaussJordanSym(b *testing.B) {
 	size := 5000
 	nfill := 4 // number filled entries per row
 
-	s := NewSparse(size)
-	for i := 0; i < size; i++ {
-		s.Set(i, i, 10)
-	}
-
-	for i := 0; i < size; i++ {
-		for n := 0; n < nfill/2; n++ {
-			j := rand.Intn(size)
-			if i == j {
-				n--
-				continue
-			}
-			v := rand.Float64()
-			s.Set(i, j, v)
-			s.Set(j, i, v)
-		}
-	}
+	s := randSparse(size, nfill)
 
 	f := make([]float64, size)
 	for i := range f {
@@ -332,4 +306,28 @@ func BenchmarkGaussJordanSym(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		GaussJordanSym(s, f)
 	}
+}
+
+func randSparse(size, fillPerRow int) *Sparse {
+	s := NewSparse(size)
+	for i := 0; i < size; i++ {
+		s.Set(i, i, 9)
+	}
+
+	for i := 0; i < size; i++ {
+		nfill := fillPerRow / 2
+		if i%7 == 0 {
+			nfill = fillPerRow / 3
+		}
+		for n := 0; n < nfill; n++ {
+			j := rand.Intn(size)
+			if i == j {
+				continue
+			}
+			v := rand.Float64()
+			s.Set(i, j, v)
+			s.Set(j, i, v)
+		}
+	}
+	return s
 }
