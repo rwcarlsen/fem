@@ -2,7 +2,6 @@ package lu
 
 import (
 	"math"
-	"sort"
 
 	"github.com/gonum/matrix/mat64"
 )
@@ -165,63 +164,29 @@ func nextCMLevel(A *Sparse, mapping map[int]int, ii []int) []int {
 	return nextlevel
 }
 
-func GaussJordan(A *Sparse, b []float64) []float64 {
+// GaussJordanSymm uses the Cuthill-McKee algorithm to permute the matrix
+// indices/DOF to have a smaller bandwidth.
+func GaussJordanSym(A *Sparse, b []float64) []float64 {
 	size, _ := A.Dims()
 
-	//fmt.Println("permuting rows...")
-	// permute rows so that nonzero entries are as far left as possible in
-	// the higher rows. There was a bug in sort.Slice in go master - so I
-	// switched to SliceStable.
-	rowmap := make([]int, size)
-	for i := range rowmap {
-		rowmap[i] = i
-	}
-	sort.SliceStable(rowmap, func(a, b int) bool {
-		centroida := 0.0
-		cols := A.NonzeroCols(a)
-		for j := range cols {
-			centroida += float64(j)
-		}
-		centroida /= float64(len(cols))
-
-		centroidb := 0.0
-		cols = A.NonzeroCols(b)
-		for j := range cols {
-			centroidb += float64(j)
-		}
-		centroidb /= float64(len(cols))
-		//fmt.Printf("    compare cm(%v)=%v < cm(%v)=%v is %v\n", a, centroida, b, centroidb, centroida < centroidb)
-		return centroida < centroidb
-	})
-
-	AA := A.PermuteRows(rowmap)
+	mapping := CM(A)
+	AA := A.Permute(mapping)
 	bb := make([]float64, size)
-	for i, inew := range rowmap {
+	for i, inew := range mapping {
 		bb[inew] = b[i]
 	}
-	//fmt.Println("row permutation:", rowmap)
+	x := GaussJordan(AA, bb)
 
-	colmap := make([]int, size)
-	for i := range colmap {
-		colmap[i] = i
+	// re-sequence solution based on CM permutation/reordering
+	xx := make([]float64, size)
+	for i, inew := range mapping {
+		xx[inew] = x[i]
 	}
-	sort.SliceStable(colmap, func(a, b int) bool {
-		centroida := 0.0
-		rows := AA.NonzeroRows(a)
-		for i := range rows {
-			centroida += float64(i)
-		}
-		centroida /= float64(len(rows))
+	return xx
+}
 
-		centroidb := 0.0
-		rows = AA.NonzeroRows(b)
-		for i := range rows {
-			centroidb += float64(i)
-		}
-		centroidb /= float64(len(rows))
-		return centroida < centroidb
-	})
-	AAA := AA.PermuteCols(colmap)
+func GaussJordan(A *Sparse, b []float64) []float64 {
+	size, _ := A.Dims()
 
 	// Using pivot rows (usually along the diagonal), eliminate all entries
 	// below the pivot - doing this choosing a pivot row to eliminate nonzeros
@@ -241,71 +206,65 @@ func GaussJordan(A *Sparse, b []float64) []float64 {
 		// to use as the pivot row.
 		piv := -1
 		for i := 0; i < size; i++ {
-			if AAA.At(i, j) != 0 && !donerows[i] {
+			if A.At(i, j) != 0 && !donerows[i] {
 				piv = i
 				break
 			}
 		}
 		//fmt.Printf("selected row %v as pivot\n", piv)
-		//fmt.Printf("Num nonzeros for col %v is %v\n", j, len(AAA.nonzeroRow[j]))
+		//fmt.Printf("Num nonzeros for col %v is %v\n", j, len(A.nonzeroRow[j]))
 		pivots[j] = piv
 		donerows[piv] = true
 
-		pval := AAA.At(piv, j)
-		bval := bb[piv]
-		for i, aij := range AAA.NonzeroRows(j) {
+		pval := A.At(piv, j)
+		bval := b[piv]
+		for i, aij := range A.NonzeroRows(j) {
 			if i != piv && i > piv {
 				mult := -aij / pval
 				//fmt.Printf("   pivot times %v plus row %v\n", mult, i)
-				RowCombination(AAA, piv, i, mult)
-				bb[i] += bval * mult
+				RowCombination(A, piv, i, mult)
+				b[i] += bval * mult
 			} else {
 				//fmt.Printf("    skipping row %v which is (above) the pivot\n", i)
 			}
 		}
-		//fmt.Printf("after:\n%.2v\n", mat64.Formatted(AAA))
+		//fmt.Printf("after:\n%.2v\n", mat64.Formatted(A))
 	}
 
 	// second pass
 	for j := size - 1; j >= 0; j-- {
 		piv := pivots[j]
 		//fmt.Printf("selected row %v as pivot\n", piv)
-		//fmt.Printf("Num nonzeros for col %v is %v\n", j, len(AAA.nonzeroRow[j]))
+		//fmt.Printf("Num nonzeros for col %v is %v\n", j, len(A.nonzeroRow[j]))
 
-		pval := AAA.At(piv, j)
-		bval := bb[piv]
-		for i, aij := range AAA.NonzeroRows(j) {
+		pval := A.At(piv, j)
+		bval := b[piv]
+		for i, aij := range A.NonzeroRows(j) {
 			if i != piv && i < piv {
 				mult := -aij / pval
 				//fmt.Printf("   pivot times %v plus row %v\n", mult, i)
-				RowCombination(AAA, piv, i, mult)
-				bb[i] += bval * mult
+				RowCombination(A, piv, i, mult)
+				b[i] += bval * mult
 			} else {
 				//fmt.Printf("    skipping row %v which is (below) the pivot\n", i)
 			}
 		}
-		//fmt.Printf("after:\n%.2v\n", mat64.Formatted(AAA))
+		//fmt.Printf("after:\n%.2v\n", mat64.Formatted(A))
 	}
 
 	// renormalize each row so that leading nonzeros are ones (row echelon to
 	// reduced row echelon)
 	for j, i := range pivots {
-		mult := 1 / AAA.At(i, j)
-		RowMult(AAA, i, mult)
-		bb[i] *= mult
+		mult := 1 / A.At(i, j)
+		RowMult(A, i, mult)
+		b[i] *= mult
 	}
 
 	// re-sequence solution based on pivot row indices/order
 	x := make([]float64, size)
 	for i := range pivots {
-		x[i] = bb[pivots[i]]
+		x[i] = b[pivots[i]]
 	}
 
-	// re-sequence solution based on colum permutation/reordering
-	xx := make([]float64, size)
-	for i, inew := range colmap {
-		xx[inew] = x[i]
-	}
-
-	return xx
+	return x
 }

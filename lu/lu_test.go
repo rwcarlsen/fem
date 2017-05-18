@@ -1,7 +1,6 @@
 package lu
 
 import (
-	"fmt"
 	"math"
 	"math/rand"
 	"testing"
@@ -56,7 +55,7 @@ func TestCM(t *testing.T) {
 				0, 0, 3, 0,
 				0, 0, 0, 4,
 			},
-			wantmap: []int{0, 1, 2, 3},
+			wantmap: []int{1, 0, 2, 3},
 		}, {
 			size: 4,
 			vals: []float64{
@@ -79,7 +78,6 @@ func TestCM(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		fmt.Println("------- test ", i+1)
 		A := NewSparse(test.size)
 		for i := 0; i < test.size; i++ {
 			for j := 0; j < test.size; j++ {
@@ -98,8 +96,8 @@ func TestCM(t *testing.T) {
 		}
 
 		if failed {
-			t.Errorf("test %v:  A=%v", i+1, mat64.Formatted(A, mat64.Prefix("                  ")))
-			t.Errorf("    A_perm=%v", mat64.Formatted(A.Permute(got), mat64.Prefix("                  ")))
+			t.Errorf("test %v:  A=%v", i+1, mat64.Formatted(A, mat64.Prefix("                   ")))
+			t.Errorf("    A_perm=%v", mat64.Formatted(A.Permute(got), mat64.Prefix("                   ")))
 			t.Errorf("    mapping: got %v, want %v", got, test.wantmap)
 		}
 	}
@@ -194,8 +192,8 @@ func TestGaussJordan(t *testing.T) {
 }
 
 func BenchmarkGonumLU(b *testing.B) {
-	size := 1000
-	nfill := 3 // number filled entries per row
+	size := 5000
+	nfill := 4 // number filled entries per row
 
 	s := mat64.NewDense(size, size, nil)
 	for i := 0; i < size; i++ {
@@ -203,13 +201,15 @@ func BenchmarkGonumLU(b *testing.B) {
 	}
 
 	for i := 0; i < size; i++ {
-		for n := 0; n < nfill; n++ {
+		for n := 0; n < nfill/2; n++ {
 			j := rand.Intn(size)
 			if i == j {
 				n--
 				continue
 			}
-			s.Set(i, j, rand.Float64())
+			v := rand.Float64()
+			s.Set(i, j, v)
+			s.Set(j, i, v)
 		}
 	}
 
@@ -225,9 +225,9 @@ func BenchmarkGonumLU(b *testing.B) {
 	}
 }
 
-func BenchmarkGaussJordan(b *testing.B) {
-	size := 1000
-	nfill := 3 // number filled entries per row
+func BenchmarkGaussJordanSym(b *testing.B) {
+	size := 5000
+	nfill := 4 // number filled entries per row
 
 	s := NewSparse(size)
 	for i := 0; i < size; i++ {
@@ -235,13 +235,15 @@ func BenchmarkGaussJordan(b *testing.B) {
 	}
 
 	for i := 0; i < size; i++ {
-		for n := 0; n < nfill; n++ {
+		for n := 0; n < nfill/2; n++ {
 			j := rand.Intn(size)
 			if i == j {
 				n--
 				continue
 			}
-			s.Set(i, j, rand.Float64())
+			v := rand.Float64()
+			s.Set(i, j, v)
+			s.Set(j, i, v)
 		}
 	}
 
@@ -252,6 +254,6 @@ func BenchmarkGaussJordan(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		GaussJordan(s, f)
+		GaussJordanSym(s, f)
 	}
 }
