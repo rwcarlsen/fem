@@ -8,7 +8,43 @@ import (
 
 const eps = 1e-6
 
-type Matrix struct {
+type RestrictByWidth struct {
+	Matrix
+	MaxWidth int
+}
+
+func (r RestrictByWidth) Set(i, j int, val float64) {
+	diff := i - j
+	if diff < 0 {
+		diff *= -1
+	}
+
+	if diff <= r.MaxWidth {
+		r.Matrix.Set(i, j, val)
+	}
+}
+
+type RestrictByPattern struct {
+	Matrix
+	Pattern Matrix
+}
+
+func (r RestrictByPattern) Set(i, j int, val float64) {
+	if r.Pattern.At(i, j) != 0 {
+		r.Matrix.Set(i, j, val)
+	}
+}
+
+type Matrix interface {
+	Dims() (int, int)
+	Set(i, j int, val float64)
+	At(i, j int) float64
+	NonzeroRows(col int) (rows map[int]float64)
+	NonzeroCols(row int) (cols map[int]float64)
+	T() mat64.Matrix
+}
+
+type Sparse struct {
 	// map[col]map[row]val
 	nonzeroRow []map[int]float64
 	// map[row]map[col]val
@@ -16,31 +52,30 @@ type Matrix struct {
 	size       int
 }
 
-func New(size int) *Matrix {
-	return &Matrix{
+func NewSparse(size int) *Sparse {
+	return &Sparse{
 		nonzeroRow: make([]map[int]float64, size),
 		nonzeroCol: make([]map[int]float64, size),
 		size:       size,
 	}
 }
 
-func (m *Matrix) Clone() *Matrix {
-	clone := New(m.size)
-	for i, m := range m.nonzeroCol {
-		for j, v := range m {
-			clone.Set(i, j, v)
+func (m *Sparse) Clone(b Matrix) {
+	size, _ := b.Dims()
+	for i := 0; i < size; i++ {
+		for j, v := range b.NonzeroCols(i) {
+			m.Set(i, j, v)
 		}
 	}
-	return clone
 }
 
-func (m *Matrix) NonzeroRows(col int) (rows map[int]float64) { return m.nonzeroRow[col] }
-func (m *Matrix) NonzeroCols(row int) (cols map[int]float64) { return m.nonzeroCol[row] }
+func (m *Sparse) NonzeroRows(col int) (rows map[int]float64) { return m.nonzeroRow[col] }
+func (m *Sparse) NonzeroCols(row int) (cols map[int]float64) { return m.nonzeroCol[row] }
 
-func (m *Matrix) T() mat64.Matrix     { return mat64.Transpose{m} }
-func (m *Matrix) Dims() (int, int)    { return m.size, m.size }
-func (m *Matrix) At(i, j int) float64 { return m.nonzeroCol[i][j] }
-func (m *Matrix) Set(i, j int, v float64) {
+func (m *Sparse) T() mat64.Matrix     { return mat64.Transpose{m} }
+func (m *Sparse) Dims() (int, int)    { return m.size, m.size }
+func (m *Sparse) At(i, j int) float64 { return m.nonzeroCol[i][j] }
+func (m *Sparse) Set(i, j int, v float64) {
 	if math.Abs(v) < eps {
 		delete(m.nonzeroCol[i], j)
 		delete(m.nonzeroRow[j], i)
@@ -57,23 +92,10 @@ func (m *Matrix) Set(i, j int, v float64) {
 	m.nonzeroRow[j][i] = v
 }
 
-// Permute maps i and j indices to new i and j values idendified by the given
-// mapping.  Values stored in m.At(i,j) are stored into a newly created sparse
-// matrix at new.At(mapping[i], mapping[j]).  The permuted matrix is returned
-// and the original remains unmodified.
-func (m *Matrix) Permute(mapping []int) *Matrix {
-	clone := New(m.size)
-	for i := 0; i < m.size; i++ {
-		for j, val := range m.NonzeroCols(i) {
-			clone.Set(mapping[i], mapping[j], val)
-		}
-	}
-	return clone
-}
-
-func (m *Matrix) Mul(b []float64) []float64 {
+func Mul(m Matrix, b []float64) []float64 {
+	size := len(b)
 	result := make([]float64, len(b))
-	for i := 0; i < m.size; i++ {
+	for i := 0; i < size; i++ {
 		tot := 0.0
 		for j, val := range m.NonzeroCols(i) {
 			tot += b[j] * val
@@ -83,15 +105,27 @@ func (m *Matrix) Mul(b []float64) []float64 {
 	return result
 }
 
-func RowCombination(m *Matrix, pivrow, dstrow int, mult float64) {
+func RowCombination(m Matrix, pivrow, dstrow int, mult float64) {
 	for col, aij := range m.NonzeroCols(pivrow) {
 		m.Set(dstrow, col, m.At(dstrow, col)+aij*mult)
 	}
 }
 
-func RowMult(m *Matrix, row int, mult float64) {
-	cols := m.NonzeroCols(row)
-	for col, val := range cols {
+func RowMult(m Matrix, row int, mult float64) {
+	for col, val := range m.NonzeroCols(row) {
 		m.Set(row, col, val*mult)
+	}
+}
+
+// Permute maps i and j indices to new i and j values idendified by the given
+// mapping.  Values stored in src.At(i,j) are stored into dst.At(mapping[i], mapping[j])
+// The permuted matrix is stored in dst overwriting values stored
+// there and the original remains unmodified.
+func Permute(dst, src Matrix, mapping []int) {
+	size, _ := src.Dims()
+	for i := 0; i < size; i++ {
+		for j, val := range src.NonzeroCols(i) {
+			dst.Set(mapping[i], mapping[j], val)
+		}
 	}
 }

@@ -9,18 +9,106 @@ import (
 )
 
 type Solver interface {
-	Solve(A *Matrix, b []float64) (soln []float64, err error)
+	Solve(A Matrix, b []float64) (soln []float64, err error)
 	Status() string
+}
+
+type Preconditioner func(z, r []float64)
+
+func IncompleteLU(A Matrix) Preconditioner {
+	size, _ := A.Dims()
+
+	return func(z, r []float64) {
+		AA := NewSparse(size)
+		AA.Clone(A)
+		zz, err := GaussJordan{}.Solve(RestrictByPattern{Matrix: AA, Pattern: AA}, r)
+		if err != nil {
+			panic(err)
+		}
+		copy(z, zz)
+	}
+}
+
+func IncompleteCholesky(A Matrix) Preconditioner {
+	//chol := NewCholesky(RestrictByPattern{A})
+	chol := NewCholesky(A)
+
+	return func(z, r []float64) {
+		zz, err := chol.Solve(r)
+		if err != nil {
+			panic(err)
+		}
+		copy(z, zz)
+	}
+}
+
+type Cholesky struct {
+	L *Sparse
+}
+
+func NewCholesky(A Matrix) *Cholesky {
+	size, _ := A.Dims()
+	L := NewSparse(size)
+
+	// diag
+	for i := 0; i < size; i++ {
+		sum := 0.0
+		for k := 0; k < i-1; k++ {
+			sum += math.Pow(L.At(i, k), 2)
+		}
+		L.Set(i, i, math.Sqrt(A.At(i, i)-sum))
+	}
+
+	// below diag
+	for i := 0; i < size; i++ {
+		for j := 0; j < size; j++ {
+			sum := 0.0
+			for k := 0; k < j-1; k++ {
+				sum += L.At(i, k) * L.At(k, j)
+			}
+			lij := (A.At(i, j) - sum) / L.At(j, j)
+			L.Set(i, j, lij)
+		}
+	}
+	return &Cholesky{L: L}
+}
+
+func (c *Cholesky) Solve(b []float64) (x []float64, err error) {
+	// Solve Ly = b
+	y := make([]float64, len(b))
+	y[0] = c.L.At(0, 0) * b[0]
+	for i := 1; i < len(b); i++ {
+		nonzeros := c.L.NonzeroCols(i)
+		tot := 0.0
+		for j, val := range nonzeros {
+			tot += y[j] * val
+		}
+		y[i] = (b[i] - tot) / nonzeros[i]
+	}
+
+	// Solve Ux = y
+	x = make([]float64, len(b))
+	x[0] = c.L.At(0, 0) * b[0]
+	for i := 1; i < len(b); i++ {
+		nonzeros := c.L.NonzeroRows(i)
+		tot := 0.0
+		for j, val := range nonzeros {
+			tot += x[j] * val
+		}
+		x[i] = (b[i] - tot) / nonzeros[i]
+	}
+	return x, nil
 }
 
 // CG implements a linear conjugate gradient solver (see
 // http://wikipedia.org/wiki/Conjugate_gradient_method)
 type CG struct {
-	MaxIter int
-	Tol     float64
-	Niter   int
-	ndof    int
-	cond    float64
+	MaxIter        int
+	Tol            float64
+	Niter          int
+	Preconditioner Preconditioner
+	ndof           int
+	cond           float64
 }
 
 func (cg *CG) Status() string {
@@ -32,70 +120,51 @@ func (cg *CG) Status() string {
 	return buf.String()
 }
 
-func (cg *CG) Solve(A *Matrix, b []float64) (x []float64, err error) {
-	//fmt.Printf("% .3v\n", mat64.Formatted(A))
-	//fmt.Printf("force=%.3v\n", b)
+func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
+	if cg.Preconditioner == nil {
+		cg.Preconditioner = func(z, r []float64) { copy(z, r) }
+		//cg.Preconditioner = IncompleteLU(A)
+		//cg.Preconditioner = IncompleteCholesky(A)
+	}
+
 	size := len(b)
 	cg.ndof = size
 	cg.cond = mat64.Cond(A, 1)
 
 	x = make([]float64, size)
 	r := make([]float64, size)
+	z := make([]float64, size)
 	p := make([]float64, size)
 	rnext := make([]float64, size)
+	znext := make([]float64, size)
 
-	vecSub(r, b, A.Mul(x))
-	copy(p, r)
+	vecSub(r, b, Mul(A, x))
+	cg.Preconditioner(z, r)
+	copy(p, z)
 
 	for cg.Niter = 0; cg.Niter < cg.MaxIter; cg.Niter++ {
-		alpha := dot(r, r) / dot(p, A.Mul(p))
-		vecAdd(x, x, vecMult(p, alpha))            // xnext = x+alpha*p
-		vecSub(rnext, r, vecMult(A.Mul(p), alpha)) // rnext = r-alpha*A*p
-		if math.Sqrt(dot(rnext, rnext)) < cg.Tol {
+		alpha := dot(r, z) / dot(p, Mul(A, p))
+		vecAdd(x, x, vecMult(p, alpha))             // xnext = x+alpha*p
+		vecSub(rnext, r, vecMult(Mul(A, p), alpha)) // rnext = r-alpha*A*p
+		diff := math.Sqrt(dot(rnext, rnext))
+		fmt.Println("diff=", diff)
+		if diff < cg.Tol {
 			break
 		}
-		beta := dot(rnext, rnext) / dot(r, r)
-		vecAdd(p, rnext, vecMult(p, beta)) // pnext = rnext + beta*p
+		cg.Preconditioner(znext, rnext)
+		beta := dot(znext, rnext) / dot(z, r)
+		vecAdd(p, znext, vecMult(p, beta)) // pnext = rnext + beta*p
 		r, rnext = rnext, r
 	}
 
 	return x, nil
 }
 
-// GaussJordanSymm uses gaussian elimination with the Cuthill-McKee algorithm to permute the
-// matrix indices/DOF to have a smaller bandwidth.
-type GaussJordanSym struct{}
-
-func (_ GaussJordanSym) Status() string { return "" }
-
-func (_ GaussJordanSym) Solve(A *Matrix, b []float64) ([]float64, error) {
-	size, _ := A.Dims()
-
-	mapping := RCM(A)
-	AA := A.Permute(mapping)
-	bb := make([]float64, size)
-	for i, inew := range mapping {
-		bb[inew] = b[i]
-	}
-
-	x, err := GaussJordan{}.Solve(AA, bb)
-	if err != nil {
-		return nil, err
-	}
-
-	// re-sequence solution based on RCM permutation/reordering
-	xx := make([]float64, size)
-	for i, inew := range mapping {
-		xx[i] = x[inew]
-	}
-	return xx, nil
-}
-
 type DenseLU struct{}
 
-func (_ DenseLU) Status() string { return "" }
+func (DenseLU) Status() string { return "" }
 
-func (_ DenseLU) Solve(A *Matrix, b []float64) ([]float64, error) {
+func (DenseLU) Solve(A Matrix, b []float64) ([]float64, error) {
 	var u mat64.Vector
 	if err := u.SolveVec(A, mat64.NewVector(len(b), b)); err != nil {
 		return nil, err
@@ -106,9 +175,9 @@ func (_ DenseLU) Solve(A *Matrix, b []float64) ([]float64, error) {
 
 type GaussJordan struct{}
 
-func (_ GaussJordan) Status() string { return "" }
+func (GaussJordan) Status() string { return "" }
 
-func (_ GaussJordan) Solve(A *Matrix, b []float64) ([]float64, error) {
+func (gj GaussJordan) Solve(A Matrix, b []float64) ([]float64, error) {
 	size, _ := A.Dims()
 
 	// Using pivot rows (usually along the diagonal), eliminate all entries
@@ -161,4 +230,34 @@ func (_ GaussJordan) Solve(A *Matrix, b []float64) ([]float64, error) {
 	}
 
 	return x, nil
+}
+
+// GaussJordanSymm uses gaussian elimination with the Cuthill-McKee algorithm to permute the
+// matrix indices/DOF to have a smaller bandwidth.
+type GaussJordanSym struct{}
+
+func (GaussJordanSym) Status() string { return "" }
+
+func (GaussJordanSym) Solve(A Matrix, b []float64) ([]float64, error) {
+	size, _ := A.Dims()
+
+	mapping := RCM(A)
+	AA := NewSparse(size)
+	Permute(AA, A, mapping)
+	bb := make([]float64, size)
+	for i, inew := range mapping {
+		bb[inew] = b[i]
+	}
+
+	x, err := GaussJordan{}.Solve(AA, bb)
+	if err != nil {
+		return nil, err
+	}
+
+	// re-sequence solution based on RCM permutation/reordering
+	xx := make([]float64, size)
+	for i, inew := range mapping {
+		xx[i] = x[inew]
+	}
+	return xx, nil
 }

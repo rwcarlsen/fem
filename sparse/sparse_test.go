@@ -13,7 +13,8 @@ func TestRCM_big(t *testing.T) {
 	nfill := 6
 	big := randSparse(size, nfill, 8)
 	mapping := RCM(big)
-	permuted := big.Permute(mapping)
+	permuted := NewSparse(size)
+	Permute(permuted, big, mapping)
 	t.Logf("original=\n% v\n", mat64.Formatted(big))
 	t.Logf("permuted=\n% v\n", mat64.Formatted(permuted))
 }
@@ -64,7 +65,7 @@ func TestRCM(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		A := New(test.size)
+		A := NewSparse(test.size)
 		for i := 0; i < test.size; i++ {
 			for j := 0; j < test.size; j++ {
 				A.Set(i, j, test.vals[i*test.size+j])
@@ -82,8 +83,10 @@ func TestRCM(t *testing.T) {
 		}
 
 		if failed {
+			permuted := NewSparse(test.size)
+			Permute(permuted, A, got)
 			t.Errorf("test %v:  A=%v", i+1, mat64.Formatted(A, mat64.Prefix("                   ")))
-			t.Errorf("    A_perm=%v", mat64.Formatted(A.Permute(got), mat64.Prefix("                   ")))
+			t.Errorf("    A_perm=%v", mat64.Formatted(permuted, mat64.Prefix("                   ")))
 			t.Errorf("    mapping: got %v, want %v", got, test.wantmap)
 		}
 	}
@@ -140,13 +143,14 @@ func TestGaussJordan(t *testing.T) {
 	for i, test := range tests {
 		size := len(test.b)
 
-		A := New(size)
+		A := NewSparse(size)
 		for i := 0; i < size; i++ {
 			for j := 0; j < size; j++ {
 				A.Set(i, j, test.vals[i*size+j])
 			}
 		}
-		refA := A.Clone()
+		refA := NewSparse(size)
+		refA.Clone(A)
 		refb := make([]float64, len(test.b))
 		copy(refb, test.b)
 
@@ -224,13 +228,14 @@ func TestGaussJordanSym(t *testing.T) {
 		t.Logf("test %v:", i+1)
 		size := len(test.b)
 
-		A := New(size)
+		A := NewSparse(size)
 		for i := 0; i < size; i++ {
 			for j := 0; j < size; j++ {
 				A.Set(i, j, test.vals[i*size+j])
 			}
 		}
-		refA := A.Clone()
+		refA := NewSparse(size)
+		refA.Clone(A)
 		refb := make([]float64, len(test.b))
 		copy(refb, test.b)
 
@@ -260,7 +265,7 @@ func TestGaussJordanSym(t *testing.T) {
 }
 
 func TestCGSolve(t *testing.T) {
-	size := 5000
+	size := 1000
 	nfill := 4 // number filled entries per row
 	maxiter := 1000
 	tol := 1e-6
@@ -283,6 +288,7 @@ func TestCGSolve(t *testing.T) {
 			t.Fatalf("solutions don't match")
 		}
 	}
+	t.Logf("    solver stats:\n%v", cg.Status())
 }
 
 func BenchmarkGonumLU(b *testing.B) {
@@ -358,8 +364,8 @@ func BenchmarkCGSolve(b *testing.B) {
 	}
 }
 
-func randSparse(size, fillPerRow int, off float64) *Matrix {
-	s := New(size)
+func randSparse(size, fillPerRow int, off float64) Matrix {
+	s := NewSparse(size)
 	for i := 0; i < size; i++ {
 		s.Set(i, i, 9)
 	}

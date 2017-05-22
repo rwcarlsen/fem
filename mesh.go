@@ -166,7 +166,7 @@ func (m *Mesh) Solve(k Kernel) error {
 
 	// remove knowns (i.e. dirichlet BCs) from matrix system to preserve symmetry
 	size := m.NumDOF() - len(knowns)
-	AA := sparse.New(size)
+	AA := sparse.NewSparse(size)
 	bb := make([]float64, size)
 
 	subindex := 0
@@ -258,10 +258,10 @@ func (m *Mesh) ForceVector(k Kernel) []float64 {
 // node test and weight functions representing the result of the integration
 // terms of the weak form of the differential equation in k that
 // include/depend on u(x).  This is the K matrix in the equation the K*u=f.
-func (m *Mesh) StiffnessMatrix(k Kernel) *sparse.Matrix {
+func (m *Mesh) StiffnessMatrix(k Kernel) *sparse.Sparse {
 	m.finalize()
 	size := m.NumDOF()
-	mat := sparse.New(size)
+	mat := sparse.NewSparse(size)
 
 	for e, elem := range m.Elems {
 		for i, n := range elem.Nodes() {

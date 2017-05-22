@@ -6,19 +6,17 @@ import "sort"
 // in A either above or below the pivot (dir = -1 for below pivot and 1 for
 // above pivot) in order to zero out the given column.  The appropriate
 // operations are also performed on b to keep it in sync.
-func ApplyPivot(A *Matrix, b []float64, col int, piv int, dir int) {
+func ApplyPivot(A Matrix, b []float64, col int, piv int, dir int) {
 	pval := A.At(piv, col)
 	bval := b[piv]
 	for i, aij := range A.NonzeroRows(col) {
-		cond := ((dir == -1) && i > piv) || ((dir == 1) && i < piv)
+		cond := ((dir < 0) && i > piv) || ((dir > 0) && i < piv) || (i != piv)
 		if i != piv && cond {
 			mult := -aij / pval
-			//fmt.Printf("   pivot times %v plus row %v\n", mult, i)
 			RowCombination(A, piv, i, mult)
 			b[i] += bval * mult
 		}
 	}
-	//fmt.Printf("after:\n%.2v\n", mat64.Formatted(A))
 }
 
 func vecAdd(result, a, b []float64) {
@@ -61,7 +59,7 @@ func vecMult(v []float64, mult float64) []float64 {
 
 // RCM provides an alternate degree-of-freedom reordering in assembled matrix
 // that provides better bandwidth properties for solvers.
-func RCM(A *Matrix) []int {
+func RCM(A Matrix) []int {
 	size, _ := A.Dims()
 	mapping := make(map[int]int, size)
 
@@ -115,7 +113,7 @@ func RCM(A *Matrix) []int {
 	return slice
 }
 
-func nextRCMLevel(A *Matrix, mapping map[int]int, ii []int) []int {
+func nextRCMLevel(A Matrix, mapping map[int]int, ii []int) []int {
 	var nextlevel []int
 	for _, i := range ii {
 		for j := range A.NonzeroCols(i) {
