@@ -67,7 +67,7 @@ func TestMeshSolve(t *testing.T) {
 			Boundary: NewBoundary1D(test.Xs, test.LeftVal, test.RightVal, test.Left, test.Right),
 		}
 		t.Logf("\n            k=%v", mat64.Formatted(mesh.StiffnessMatrix(hc), mat64.Prefix("              ")))
-		t.Logf("\n            f=%v", mat64.Formatted(mesh.ForceMatrix(hc), mat64.Prefix("              ")))
+		t.Logf("\n            f=%v", mesh.ForceVector(hc))
 
 		err = mesh.Solve(hc)
 		if err != nil {

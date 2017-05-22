@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/gonum/matrix/mat64"
 	"github.com/rwcarlsen/fem/sparse"
 )
 
@@ -156,69 +155,103 @@ func (m *Mesh) Solve(k Kernel) error {
 
 	m.reset()
 	A := m.StiffnessMatrix(k)
-	b := m.ForceMatrix(k)
-	x, err := solver.Solve(A, b.RawVector().Data)
+	b := m.ForceVector(k)
+
+	// eliminate nonzeros in all columns of known/dirichlet dofs.
+	knowns := m.knowns(k)
+	for i := range knowns {
+		sparse.ApplyPivot(A, b, i, i, -1)
+		sparse.ApplyPivot(A, b, i, i, 1)
+	}
+
+	// remove knowns (i.e. dirichlet BCs) from matrix system to preserve symmetry
+	size := m.NumDOF() - len(knowns)
+	AA := sparse.New(size)
+	bb := make([]float64, size)
+
+	subindex := 0
+	subindices := make([]int, m.NumDOF())
+	rsubindices := make([]int, size)
+	for i := 0; i < m.NumDOF(); i++ {
+		if _, ok := knowns[i]; !ok {
+			subindices[i] = subindex
+			rsubindices[subindex] = i
+			subindex++
+		}
+	}
+
+	for i := 0; i < m.NumDOF(); i++ {
+		if _, ok := knowns[i]; ok {
+			continue
+		}
+
+		bb[subindices[i]] = b[i]
+		for j, val := range A.NonzeroCols(i) {
+			if _, ok := knowns[j]; ok {
+				continue
+			}
+			AA.Set(subindices[i], subindices[j], val)
+		}
+	}
+
+	// solve system
+	x, err := solver.Solve(AA, bb)
 	if err != nil {
 		return err
 	}
 
+	// populate node/DOF solution values in mesh
 	for i, val := range x {
+		nodes := m.indexNode[rsubindices[i]]
+		for _, n := range nodes {
+			n.U = val
+			n.W = 1
+		}
+	}
+	for i, val := range knowns {
 		nodes := m.indexNode[i]
 		for _, n := range nodes {
 			n.U = val
 			n.W = 1
 		}
 	}
+
 	return nil
 }
 
-// ForceMatrix builds the matrix with one entry for each node representing the
+func (m *Mesh) knowns(k Kernel) map[int]float64 {
+	m.finalize()
+	knowns := make(map[int]float64)
+	for e, elem := range m.Elems {
+		for i, n := range elem.Nodes() {
+			if is, val := k.IsDirichlet(n.X); is {
+				knowns[m.nodeId(e, i)] = val
+			}
+		}
+	}
+
+	return knowns
+}
+
+// ForceVector builds the matrix with one entry for each node representing the
 // result of the integration terms of the weak form of the differential
 // equation in k that do *not* include/depend on u(x).  This is the f column
 // vector in the equation the K*u=f.
-func (m *Mesh) ForceMatrix(k Kernel) *mat64.Vector {
+func (m *Mesh) ForceVector(k Kernel) []float64 {
 	m.finalize()
 	size := m.NumDOF()
-	mat := mat64.NewVector(size, nil)
+	f := make([]float64, size)
 	for e, elem := range m.Elems {
 		for i, n := range elem.Nodes() {
 			a := m.nodeId(e, i)
 			if ok, v := k.IsDirichlet(n.X); ok {
-				mat.SetVec(a, v)
+				f[a] = v
 				continue
 			}
-			v := elem.IntegrateForce(k, i)
-			mat.SetVec(a, mat.At(a, 0)+v)
+			f[a] += elem.IntegrateForce(k, i)
 		}
 	}
-	return mat
-}
-
-func (m *Mesh) StiffnessRow(k Kernel, row int) *mat64.Vector {
-	m.finalize()
-	size := m.NumDOF()
-	mat := mat64.NewVector(size, nil)
-	for e, elem := range m.Elems {
-		for i, n := range elem.Nodes() {
-			a := m.nodeId(e, i)
-			if a != row {
-				continue
-			} else if ok, _ := k.IsDirichlet(n.X); ok {
-				mat.SetVec(row, 1.0)
-				return mat
-			}
-
-			for j := 0; j < len(elem.Nodes()); j++ {
-				b := m.nodeId(e, j)
-				if m.Bandwidth > 0 && absInt(a-b) > m.Bandwidth {
-					continue
-				}
-				v := elem.IntegrateStiffness(k, i, j)
-				mat.SetVec(b, mat.At(b, 0)+v)
-			}
-		}
-	}
-	return mat
+	return f
 }
 
 // StiffnessMatrix builds the matrix with one entry for each combination of

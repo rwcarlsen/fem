@@ -65,8 +65,8 @@ func TestHeatKernel() {
 	if *printmats {
 		stiffness := mesh.StiffnessMatrix(hc)
 		fmt.Printf("stiffness:\n%.5v\n", mat64.Formatted(stiffness))
-		force := mesh.ForceMatrix(hc)
-		fmt.Printf("force:\n%.5v\n", mat64.Formatted(force))
+		force := mesh.ForceVector(hc)
+		fmt.Printf("force:\n%.4v\n", force)
 	}
 
 	switch *solver {

@@ -1,6 +1,7 @@
 package sparse
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 
@@ -18,12 +19,25 @@ type CG struct {
 	MaxIter int
 	Tol     float64
 	Niter   int
+	ndof    int
+	cond    float64
 }
 
-func (cg *CG) Status() string { return fmt.Sprintf("converged in %v iterations", cg.Niter) }
+func (cg *CG) Status() string {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "CG Solver Stats:\n")
+	fmt.Fprintf(&buf, "    %v dof\n", cg.ndof)
+	fmt.Fprintf(&buf, "    matrix condition number: %v\n", cg.cond)
+	fmt.Fprintf(&buf, "    converged in %v iterations", cg.Niter)
+	return buf.String()
+}
 
 func (cg *CG) Solve(A *Matrix, b []float64) (x []float64, err error) {
+	//fmt.Printf("% .3v\n", mat64.Formatted(A))
+	//fmt.Printf("force=%.3v\n", b)
 	size := len(b)
+	cg.ndof = size
+	cg.cond = mat64.Cond(A, 1)
 
 	x = make([]float64, size)
 	r := make([]float64, size)
@@ -124,12 +138,12 @@ func (_ GaussJordan) Solve(A *Matrix, b []float64) ([]float64, error) {
 		pivots[j] = piv
 		donerows[piv] = true
 
-		applyPivot(A, b, j, pivots[j], -1)
+		ApplyPivot(A, b, j, pivots[j], -1)
 	}
 
 	// second pass
 	for j := size - 1; j >= 0; j-- {
-		applyPivot(A, b, j, pivots[j], 1)
+		ApplyPivot(A, b, j, pivots[j], 1)
 	}
 
 	// renormalize each row so that leading nonzeros are ones (row echelon to
@@ -147,23 +161,4 @@ func (_ GaussJordan) Solve(A *Matrix, b []float64) ([]float64, error) {
 	}
 
 	return x, nil
-}
-
-// applyPivot uses the given pivot row to multiply and add to all other rows
-// in A either above or below the pivot (dir = -1 for below pivot and 1 for
-// above pivot) in order to zero out the given column.  The appropriate
-// operations are also performed on b to keep it in sync.
-func applyPivot(A *Matrix, b []float64, col int, piv int, dir int) {
-	pval := A.At(piv, col)
-	bval := b[piv]
-	for i, aij := range A.NonzeroRows(col) {
-		cond := ((dir == -1) && i > piv) || ((dir == 1) && i < piv)
-		if i != piv && cond {
-			mult := -aij / pval
-			//fmt.Printf("   pivot times %v plus row %v\n", mult, i)
-			RowCombination(A, piv, i, mult)
-			b[i] += bval * mult
-		}
-	}
-	//fmt.Printf("after:\n%.2v\n", mat64.Formatted(A))
 }
