@@ -54,25 +54,32 @@ func NewCholesky(A Matrix) *Cholesky {
 	for k := 0; k < size; k++ {
 		// diag
 		L.Set(k, k, math.Sqrt(L.At(k, k)))
-		for i := k + 1; i < size; i++ {
-			if aik := L.At(i, k); aik != 0 {
-				L.Set(i, k, aik/L.At(k, k))
+
+		akk := L.At(k, k)
+		// below diag
+		for i, aik := range L.NonzeroRows(k) {
+			if i > k && aik != 0 {
+				L.Set(i, k, aik/akk)
 			}
 		}
 
-		// below diag
-		for j := k + 1; j < size; j++ {
-			for i := j; i < size; i++ {
-				if aij := L.At(i, j); aij != 0 {
-					L.Set(i, j, aij-L.At(i, k)*L.At(j, k))
+		for j, ajk := range L.NonzeroRows(k) {
+			if j <= k {
+				continue
+			}
+			for i, aik := range L.NonzeroRows(k) {
+				if aij := L.At(i, j); i >= j && aij != 0 {
+					L.Set(i, j, aij-aik*ajk)
 				}
 			}
 		}
 	}
 
 	for i := 0; i < size; i++ {
-		for j := i + 1; j < size; j++ {
-			L.Set(i, j, 0)
+		for j := range L.NonzeroCols(i) {
+			if j > i {
+				L.Set(i, j, 0)
+			}
 		}
 	}
 	return &Cholesky{L: L}
