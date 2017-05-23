@@ -100,14 +100,14 @@ func (c *Cholesky) Solve(b []float64) (x []float64, err error) {
 
 	// Solve Ux = y
 	x = make([]float64, len(b))
-	x[0] = c.L.At(0, 0) * b[0]
-	for i := 1; i < len(b); i++ {
+	x[0] = c.L.At(0, 0) * y[0]
+	for i := len(b) - 1; i >= 0; i-- {
 		nonzeros := c.L.NonzeroRows(i)
 		tot := 0.0
 		for j, val := range nonzeros {
 			tot += x[j] * val
 		}
-		x[i] = (b[i] - tot) / nonzeros[i]
+		x[i] = (y[i] - tot) / nonzeros[i]
 	}
 	return x, nil
 }
