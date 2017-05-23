@@ -49,25 +49,30 @@ type Cholesky struct {
 func NewCholesky(A Matrix) *Cholesky {
 	size, _ := A.Dims()
 	L := NewSparse(size)
+	L.Clone(A)
 
-	// diag
-	for i := 0; i < size; i++ {
-		sum := 0.0
-		for k := 0; k < i-1; k++ {
-			sum += math.Pow(L.At(i, k), 2)
+	for k := 0; k < size; k++ {
+		// diag
+		L.Set(k, k, math.Sqrt(L.At(k, k)))
+		for i := k + 1; i < size; i++ {
+			if aik := L.At(i, k); aik != 0 {
+				L.Set(i, k, aik/L.At(k, k))
+			}
 		}
-		L.Set(i, i, math.Sqrt(A.At(i, i)-sum))
+
+		// below diag
+		for j := k + 1; j < size; j++ {
+			for i := j; i < size; i++ {
+				if aij := L.At(i, j); aij != 0 {
+					L.Set(i, j, aij-L.At(i, k)*L.At(j, k))
+				}
+			}
+		}
 	}
 
-	// below diag
 	for i := 0; i < size; i++ {
-		for j := 0; j < size; j++ {
-			sum := 0.0
-			for k := 0; k < j-1; k++ {
-				sum += L.At(i, k) * L.At(k, j)
-			}
-			lij := (A.At(i, j) - sum) / L.At(j, j)
-			L.Set(i, j, lij)
+		for j := i + 1; j < size; j++ {
+			L.Set(i, j, 0)
 		}
 	}
 	return &Cholesky{L: L}
@@ -122,9 +127,9 @@ func (cg *CG) Status() string {
 
 func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 	if cg.Preconditioner == nil {
-		cg.Preconditioner = func(z, r []float64) { copy(z, r) }
+		//cg.Preconditioner = func(z, r []float64) { copy(z, r) }
 		//cg.Preconditioner = IncompleteLU(A)
-		//cg.Preconditioner = IncompleteCholesky(A)
+		cg.Preconditioner = IncompleteCholesky(A)
 	}
 
 	size := len(b)
@@ -147,7 +152,6 @@ func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 		vecAdd(x, x, vecMult(p, alpha))             // xnext = x+alpha*p
 		vecSub(rnext, r, vecMult(Mul(A, p), alpha)) // rnext = r-alpha*A*p
 		diff := math.Sqrt(dot(rnext, rnext))
-		fmt.Println("diff=", diff)
 		if diff < cg.Tol {
 			break
 		}
@@ -155,6 +159,7 @@ func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 		beta := dot(znext, rnext) / dot(z, r)
 		vecAdd(p, znext, vecMult(p, beta)) // pnext = rnext + beta*p
 		r, rnext = rnext, r
+		z, znext = znext, z
 	}
 
 	return x, nil
