@@ -45,6 +45,38 @@ func TestNewCholesky(t *testing.T) {
 	}
 }
 
+func TestNewCholesky2(t *testing.T) {
+	size := 6
+	nfill := 4 // number filled entries per row
+	tol := 1e-6
+
+	s := randSparse(size, nfill, 0)
+	f := make([]float64, size)
+	d := mat64.NewSymDense(size, nil)
+	for i := range f {
+		f[i] = 1
+		for j := range f {
+			if j >= i {
+				d.SetSym(i, j, s.At(i, j))
+			}
+		}
+	}
+
+	var refchol mat64.Cholesky
+	refchol.Factorize(d)
+	var wantL mat64.TriDense
+	wantL.LFromCholesky(&refchol)
+
+	chol := NewCholesky(s)
+	for i := 0; i < size; i++ {
+		for j := 0; j < size; j++ {
+			if math.Abs(chol.L.At(i, j)-wantL.At(i, j)) > tol {
+				t.Fatalf("solutions don't match:\ngot\n% .3v\nwant\n% .3v", mat64.Formatted(chol.L), mat64.Formatted(&wantL))
+			}
+		}
+	}
+}
+
 func TestCholesky_Solve(t *testing.T) {
 	size := 50
 	nfill := 4 // number filled entries per row
@@ -64,6 +96,8 @@ func TestCholesky_Solve(t *testing.T) {
 	got, _ := chol.Solve(f)
 	for i := range got {
 		if math.Abs(got[i]-want.At(i, 0)) > tol {
+			t.Errorf("A:\n% 3g\nb=%v", mat64.Formatted(s), f)
+			t.Errorf("condition number of A is %v", mat64.Cond(s, 2))
 			t.Fatalf("solutions don't match:\ngot %v\nwant %v", got, want.RawVector().Data)
 		}
 	}

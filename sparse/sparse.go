@@ -6,7 +6,7 @@ import (
 	"github.com/gonum/matrix/mat64"
 )
 
-const eps = 1e-6
+const eps = 1e-9
 
 type RestrictByWidth struct {
 	Matrix

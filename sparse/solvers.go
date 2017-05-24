@@ -53,9 +53,9 @@ func NewCholesky(A Matrix) *Cholesky {
 
 	for k := 0; k < size; k++ {
 		// diag
-		L.Set(k, k, math.Sqrt(L.At(k, k)))
+		akk := math.Sqrt(L.At(k, k))
+		L.Set(k, k, akk)
 
-		akk := L.At(k, k)
 		// below diag
 		for i, aik := range L.NonzeroRows(k) {
 			if i > k && aik != 0 {
@@ -68,7 +68,7 @@ func NewCholesky(A Matrix) *Cholesky {
 				continue
 			}
 			for i, aik := range L.NonzeroRows(k) {
-				if aij := L.At(i, j); i >= j && aij != 0 {
+				if aij := L.At(i, j); i >= j {
 					L.Set(i, j, aij-aik*ajk)
 				}
 			}
@@ -86,10 +86,9 @@ func NewCholesky(A Matrix) *Cholesky {
 }
 
 func (c *Cholesky) Solve(b []float64) (x []float64, err error) {
-	// Solve Ly = b
+	// Solve Ly = b via forward substitution
 	y := make([]float64, len(b))
-	y[0] = c.L.At(0, 0) * b[0]
-	for i := 1; i < len(b); i++ {
+	for i := 0; i < len(b); i++ {
 		nonzeros := c.L.NonzeroCols(i)
 		tot := 0.0
 		for j, val := range nonzeros {
@@ -98,10 +97,10 @@ func (c *Cholesky) Solve(b []float64) (x []float64, err error) {
 		y[i] = (b[i] - tot) / nonzeros[i]
 	}
 
-	// Solve Ux = y
+	// Solve Ux = y via backward substitution
 	x = make([]float64, len(b))
-	x[0] = c.L.At(0, 0) * y[0]
 	for i := len(b) - 1; i >= 0; i-- {
+		// this inversion (NonzeroRows instead of NonzeroCols simulates the L->U transpose)
 		nonzeros := c.L.NonzeroRows(i)
 		tot := 0.0
 		for j, val := range nonzeros {
