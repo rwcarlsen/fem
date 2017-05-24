@@ -35,7 +35,7 @@ func TestNewCholesky(t *testing.T) {
 	A := makeSparse(size, data)
 	wantL := makeSparse(size, wantdata)
 
-	chol := NewCholesky(A)
+	chol := NewCholesky(nil, A)
 	for i := 0; i < size; i++ {
 		for j := 0; j < size; j++ {
 			if math.Abs(chol.L.At(i, j)-wantL.At(i, j)) > tol {
@@ -67,7 +67,7 @@ func TestNewCholesky2(t *testing.T) {
 	var wantL mat64.TriDense
 	wantL.LFromCholesky(&refchol)
 
-	chol := NewCholesky(s)
+	chol := NewCholesky(nil, s)
 	for i := 0; i < size; i++ {
 		for j := 0; j < size; j++ {
 			if math.Abs(chol.L.At(i, j)-wantL.At(i, j)) > tol {
@@ -92,7 +92,7 @@ func TestCholesky_Solve(t *testing.T) {
 	var want mat64.Vector
 	want.SolveVec(d, mat64.NewVector(size, f))
 
-	chol := NewCholesky(s)
+	chol := NewCholesky(nil, s)
 	got, _ := chol.Solve(f)
 	for i := range got {
 		if math.Abs(got[i]-want.At(i, 0)) > tol {

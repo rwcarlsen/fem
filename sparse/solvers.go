@@ -13,25 +13,17 @@ type Solver interface {
 	Status() string
 }
 
+// Preconditioner is a function that takes a (e.g. resitual) vector r and applies a
+// preconditioning matrix to it and stores the result in z.
 type Preconditioner func(z, r []float64)
 
-func IncompleteLU(A Matrix) Preconditioner {
-	size, _ := A.Dims()
-
-	return func(z, r []float64) {
-		AA := NewSparse(size)
-		AA.Clone(A)
-		zz, err := GaussJordan{}.Solve(RestrictByPattern{Matrix: AA, Pattern: AA}, r)
-		if err != nil {
-			panic(err)
-		}
-		copy(z, zz)
-	}
-}
-
+// IncompleteCholesky returns a preconditioner that uses an incomplete cholesky factorization
+// (incomplete via maintaining the same sparsity pattern as the matrix A).  The factorization is
+// then used to solve for z in the system A*z=r for the preconditioner - i.e. for the preconditioning
+// M^(-1)*r, M is the incomplete cholesky factorization.
 func IncompleteCholesky(A Matrix) Preconditioner {
-	//chol := NewCholesky(RestrictByPattern{A})
-	chol := NewCholesky(A)
+	size, _ := A.Dims()
+	chol := NewCholesky(RestrictByPattern{NewSparse(size), A}, A)
 
 	return func(z, r []float64) {
 		zz, err := chol.Solve(r)
@@ -43,13 +35,21 @@ func IncompleteCholesky(A Matrix) Preconditioner {
 }
 
 type Cholesky struct {
-	L *Sparse
+	L Matrix
 }
 
-func NewCholesky(A Matrix) *Cholesky {
+// NewCholesky computes the Cholesky decomposition of A and stores it in L.  The returned Cholesky
+// object's L is the same as the passed in L.  If L is nil, a new Sparse matrix will be created.
+// Incomplete factorizations can be computed by passing in an L that ignores nonzero entries in
+// certain locations.
+func NewCholesky(L, A Matrix) *Cholesky {
+	fmt.Println("cholesky factorizing...")
+	defer fmt.Println("...done factorizing")
 	size, _ := A.Dims()
-	L := NewSparse(size)
-	L.Clone(A)
+	if L == nil {
+		L = NewSparse(size)
+	}
+	Copy(L, A)
 
 	for k := 0; k < size; k++ {
 		// diag
@@ -68,7 +68,8 @@ func NewCholesky(A Matrix) *Cholesky {
 				continue
 			}
 			for i, aik := range L.NonzeroRows(k) {
-				if aij := L.At(i, j); i >= j {
+				if i >= j {
+					aij := L.At(i, j)
 					L.Set(i, j, aij-aik*ajk)
 				}
 			}
@@ -114,10 +115,12 @@ func (c *Cholesky) Solve(b []float64) (x []float64, err error) {
 // CG implements a linear conjugate gradient solver (see
 // http://wikipedia.org/wiki/Conjugate_gradient_method)
 type CG struct {
-	MaxIter        int
-	Tol            float64
-	Niter          int
+	MaxIter int
+	Tol     float64
+	// Preconditioner is the preconditioning matrix used for each iteration of the CG solver. If
+	// it is nil, a default preconditioner will be used.
 	Preconditioner Preconditioner
+	niter          int
 	ndof           int
 	cond           float64
 }
@@ -127,7 +130,7 @@ func (cg *CG) Status() string {
 	fmt.Fprintf(&buf, "CG Solver Stats:\n")
 	fmt.Fprintf(&buf, "    %v dof\n", cg.ndof)
 	fmt.Fprintf(&buf, "    matrix condition number: %v\n", cg.cond)
-	fmt.Fprintf(&buf, "    converged in %v iterations", cg.Niter)
+	fmt.Fprintf(&buf, "    converged in %v iterations", cg.niter)
 	return buf.String()
 }
 
@@ -153,7 +156,7 @@ func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 	cg.Preconditioner(z, r)
 	copy(p, z)
 
-	for cg.Niter = 0; cg.Niter < cg.MaxIter; cg.Niter++ {
+	for cg.niter = 0; cg.niter < cg.MaxIter; cg.niter++ {
 		alpha := dot(r, z) / dot(p, Mul(A, p))
 		vecAdd(x, x, vecMult(p, alpha))             // xnext = x+alpha*p
 		vecSub(rnext, r, vecMult(Mul(A, p), alpha)) // rnext = r-alpha*A*p
@@ -184,6 +187,8 @@ func (DenseLU) Solve(A Matrix, b []float64) ([]float64, error) {
 
 }
 
+// GaussJordan performs Gaussian-Jordan elimination on an augmented matrix [A|b] to solve the
+// system A*x=b.
 type GaussJordan struct{}
 
 func (GaussJordan) Status() string { return "" }

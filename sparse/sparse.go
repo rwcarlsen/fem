@@ -60,6 +60,15 @@ func NewSparse(size int) *Sparse {
 	}
 }
 
+func Copy(dst, src Matrix) {
+	size, _ := src.Dims()
+	for i := 0; i < size; i++ {
+		for j, val := range src.NonzeroCols(i) {
+			dst.Set(i, j, val)
+		}
+	}
+}
+
 func (m *Sparse) Clone(b Matrix) {
 	size, _ := b.Dims()
 	for i := 0; i < size; i++ {
