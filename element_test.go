@@ -32,6 +32,138 @@ func TestElement1D(t *testing.T) {
 	}
 }
 
+func TestElement2D_Contains(t *testing.T) {
+	tests := []struct {
+		Xs     [][]float64
+		Points [][]float64
+		Inside []bool
+	}{
+		{ // unit square
+			Xs: [][]float64{
+				{0, 0},
+				{1, 0},
+				{1, 1},
+				{0, 1},
+			},
+			Points: [][]float64{{0, 1}, {.5, .5}, {2, .5}, {.5, 2}},
+			Inside: []bool{true, true, false, false},
+		}, { // right triangle
+			Xs: [][]float64{
+				{0, 0},
+				{1, 0},
+				{1, 1},
+			},
+			Points: [][]float64{{0, 0}, {.5, .5}, {.6, .5}, {.5, .6}},
+			Inside: []bool{true, true, true, false},
+		}, { // reorder nodes
+			Xs: [][]float64{
+				{1, 1},
+				{0, 0},
+				{1, 0},
+			},
+			Points: [][]float64{{0, 0}, {.5, .5}, {.6, .5}, {.5, .6}},
+			Inside: []bool{true, true, true, false},
+		}, { // translation away from zero origin.
+			Xs: [][]float64{
+				{2, 2},
+				{3, 2},
+				{3, 3},
+			},
+			Points: [][]float64{{2, 2}, {2.5, 2.5}, {2.6, 2.5}, {2.5, 2.6}},
+			Inside: []bool{true, true, true, false},
+		}, { // unregular quadrilateral
+			Xs: [][]float64{
+				{0, 0},
+				{1, 0},
+				{1, 1},
+				{-1, 2},
+			},
+			Points: [][]float64{{0, 0}, {-.1, 0}, {-.5, 1}, {-.6, 1}, {0, 1.5}, {.1, 1.5}},
+			Inside: []bool{true, false, true, false, true, false},
+		},
+	}
+
+	for i, test := range tests {
+		e := &Element2D{}
+		for _, x := range test.Xs {
+			e.Nds = append(e.Nds, &Node{X: x})
+		}
+		t.Logf("case %v (nodes=%v):", i+1, test.Xs)
+		for j, point := range test.Points {
+			if e.Contains(point) != test.Inside[j] {
+				t.Errorf("    FAIL contains point %v: got %v, want %v", point, e.Contains(point), test.Inside[j])
+			} else {
+				t.Logf("         contains point %v: got %v", point, e.Contains(point))
+			}
+		}
+	}
+}
+
+func TestElement2D_Area(t *testing.T) {
+	tests := []struct {
+		Xs       [][]float64
+		WantArea float64
+	}{
+		{ // unit square
+			Xs: [][]float64{
+				{0, 0},
+				{1, 0},
+				{1, 1},
+				{0, 1},
+			},
+			WantArea: 1,
+		}, { // right triangle
+			Xs: [][]float64{
+				{0, 0},
+				{1, 0},
+				{1, 1},
+			},
+			WantArea: .5,
+		}, { // reorder nodes, but still numbered counter-clockwise
+			Xs: [][]float64{
+				{1, 1},
+				{0, 0},
+				{1, 0},
+			},
+			WantArea: .5,
+		}, { // clockwise node order causes negative areas.
+			Xs: [][]float64{
+				{1, 0},
+				{0, 0},
+				{1, 1},
+			},
+			WantArea: -.5,
+		}, { // translation away from zero origin.
+			Xs: [][]float64{
+				{2, 2},
+				{3, 2},
+				{3, 3},
+			},
+			WantArea: .5,
+		}, { // unregular quadrilateral
+			Xs: [][]float64{
+				{2, 2},
+				{3, 2},
+				{3, 3},
+				{1, 4},
+			},
+			WantArea: 2,
+		},
+	}
+
+	for i, test := range tests {
+		e := &Element2D{}
+		for _, x := range test.Xs {
+			e.Nds = append(e.Nds, &Node{X: x})
+		}
+		if e.Area() != test.WantArea {
+			t.Errorf("FAIL case %v (points=%v) area: got %v, want %v", i+1, test.Xs, e.Area(), test.WantArea)
+		} else {
+			t.Logf("     case %v (points=%v) area: got %v", i+1, test.Xs, e.Area())
+		}
+	}
+}
+
 type constKernel float64
 
 func (k constKernel) VolIntU(p *KernelParams) float64          { return float64(k) }
@@ -116,11 +248,7 @@ func TestElement2D_IntegrateBoundary(t *testing.T) {
 
 	for i, test := range tests {
 		ts := test
-		elem, err := NewElementSimple2D(ts.X1, ts.Y1, ts.X2, ts.Y2, ts.X3, ts.Y3, ts.X4, ts.Y4)
-		if err != nil {
-			t.Error(err)
-			continue
-		}
+		elem := NewElementSimple2D(ts.X1, ts.Y1, ts.X2, ts.Y2, ts.X3, ts.Y3, ts.X4, ts.Y4)
 
 		nds := elem.Nodes()
 		nds[0].Set(test.V1, 1)

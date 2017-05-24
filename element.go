@@ -163,43 +163,46 @@ func (e *Element1D) IntegrateForce(k Kernel, wNode int) float64 {
 }
 
 func (e *Element1D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
+	// determinant of jacobian to convert from ref element integral to
+	// real coord integral
+	jacdet := (e.right() - e.left()) / 2
 	var refLeft = []float64{-1}
 	var refRight = []float64{1}
-	mult := (e.right() - e.left()) / 2
-
 	var w, u *Node = e.Nds[wNode], nil
 	x1 := []float64{e.left()}
 	x2 := []float64{e.right()}
-	pars1 := &KernelParams{X: x1, W: w.Weight(refLeft), GradW: vecMult(w.WeightDeriv(refLeft), 1/mult)}
-	pars2 := &KernelParams{X: x2, W: w.Weight(refRight), GradW: vecMult(w.WeightDeriv(refRight), 1/mult)}
+	pars1 := &KernelParams{X: x1, W: w.Weight(refLeft), GradW: vecMult(w.WeightDeriv(refLeft), 1/jacdet)}
+	pars2 := &KernelParams{X: x2, W: w.Weight(refRight), GradW: vecMult(w.WeightDeriv(refRight), 1/jacdet)}
 
 	if uNode < 0 {
 		return k.BoundaryInt(pars1) + k.BoundaryInt(pars2)
 	}
 	u = e.Nds[uNode]
 	pars1.U = u.Value(refLeft)
-	pars1.GradU = vecMult(u.ValueDeriv(refLeft), 1/mult)
+	pars1.GradU = vecMult(u.ValueDeriv(refLeft), 1/jacdet)
 	pars2.U = u.Value(refRight)
-	pars2.GradU = vecMult(u.ValueDeriv(refRight), 1/mult)
+	pars2.GradU = vecMult(u.ValueDeriv(refRight), 1/jacdet)
 	return k.BoundaryIntU(pars1) + k.BoundaryIntU(pars2)
 }
 
 func (e *Element1D) integrateVol(k Kernel, wNode, uNode int) float64 {
-	mult := (e.right() - e.left()) / 2
+	// determinant of jacobian to convert from ref element integral to
+	// real coord integral
+	jacdet := (e.right() - e.left()) / 2
 	fn := func(ref float64) float64 {
 		refxs := []float64{ref}
 		xs := e.Coord(refxs)
 		var w, u *Node = e.Nds[wNode], nil
-		pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: vecMult(w.WeightDeriv(refxs), 1/mult)}
+		pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: vecMult(w.WeightDeriv(refxs), 1/jacdet)}
 		if uNode < 0 {
 			return k.VolInt(pars)
 		}
 		u = e.Nds[uNode]
 		pars.U = u.Value(refxs)
-		pars.GradU = vecMult(u.ValueDeriv(refxs), 1/mult)
+		pars.GradU = vecMult(u.ValueDeriv(refxs), 1/jacdet)
 		return k.VolIntU(pars)
 	}
-	return quad.Fixed(fn, -1, 1, len(e.Nds), quad.Legendre{}, 0) * mult
+	return quad.Fixed(fn, -1, 1, len(e.Nds), quad.Legendre{}, 0) * jacdet
 }
 
 // PrintFunc prints the element value and derivative in tab-separated form
@@ -247,13 +250,58 @@ type Element2D struct {
 	Nds []*Node
 }
 
+// Creates a new bilinear quad element.  (x1,y1);(x2,y2);... must specify coordinates for the
+// corners running counter-clockwise around the element.
+func NewElementSimple2D(x1, y1, x2, y2, x3, y3, x4, y4 float64) *Element2D {
+	n1 := &Node{X: []float64{x1, y1}, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 0}}
+	n2 := &Node{X: []float64{x2, y2}, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 1}}
+	n3 := &Node{X: []float64{x3, y3}, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 2}}
+	n4 := &Node{X: []float64{x4, y4}, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 3}}
+	return &Element2D{Nds: []*Node{n1, n2, n3, n4}}
+}
+
+func (e *Element2D) Nodes() []*Node { return e.Nds }
+
+func (e *Element2D) Contains(x []float64) bool {
+	ax, ay := x[0], x[1]
+	tot := 0.0
+	for i := 0; i < len(e.Nds); i++ {
+		bx, by := e.Nds[i].X[0], e.Nds[i].X[1]
+		cx, cy := e.Nds[0].X[0], e.Nds[0].X[1]
+		if i+1 < len(e.Nds) {
+			cx, cy = e.Nds[i+1].X[0], e.Nds[i+1].X[1]
+		}
+		tot += math.Abs(ax*(by-cy) + bx*(cy-ay) + cx*(ay-by))
+	}
+	area := tot / 2
+	return math.Abs(area-e.Area()) < 1e-6
+}
+
+func (e *Element2D) Area() float64 {
+	ax, ay := e.Nds[0].X[0], e.Nds[0].X[1]
+	tot := 0.0
+	for i := 1; i < len(e.Nds); i++ {
+		bx, by := e.Nds[i].X[0], e.Nds[i].X[1]
+		cx, cy := e.Nds[0].X[0], e.Nds[0].X[1]
+		if i+1 < len(e.Nds) {
+			cx, cy = e.Nds[i+1].X[0], e.Nds[i+1].X[1]
+		}
+		tot += ax*(by-cy) + bx*(cy-ay) + cx*(ay-by)
+	}
+	return tot / 2
+}
+
+func (e *Element2D) Bounds() (low, up []float64) {
+	return []float64{e.xmin(), e.ymin()}, []float64{e.xmax(), e.ymax()}
+}
+
 func (e *Element2D) xmin() float64 { return e.min(0, true) }
 func (e *Element2D) xmax() float64 { return e.min(0, false) }
 func (e *Element2D) ymin() float64 { return e.min(1, true) }
 func (e *Element2D) ymax() float64 { return e.min(1, false) }
 
 func (e *Element2D) min(coord int, less bool) float64 {
-	extreme := e.Nds[coord].X[0]
+	extreme := e.Nds[0].X[coord]
 	for _, n := range e.Nds[1:] {
 		if n.X[coord] < extreme && less || n.X[coord] > extreme && !less {
 			extreme = n.X[coord]
@@ -262,106 +310,120 @@ func (e *Element2D) min(coord int, less bool) float64 {
 	return extreme
 }
 
-func NewElementSimple2D(x1, y1, x2, y2, x3, y3, x4, y4 float64) (*Element2D, error) {
-	panic("unimplemented")
-	//n1, err := NewBilinQuadNode(x1, y1, x2, y2, x3, y3, x4, y4)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//n2, err := NewBilinQuadNode(x2, y2, x3, y3, x4, y4, x1, y1)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//n3, err := NewBilinQuadNode(x3, y3, x4, y4, x1, y1, x2, y2)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//n4, err := NewBilinQuadNode(x4, y4, x1, y1, x2, y2, x3, y3)
-	//if err != nil {
-	//	return nil, err
-	//}
+func (e *Element2D) Coord(refx []float64) []float64 {
+	ee, nn := refx[0], refx[1]
+	x1 := e.Nds[0].X[0]
+	x2 := e.Nds[1].X[0]
+	x3 := e.Nds[2].X[0]
+	x4 := e.Nds[3].X[0]
+	y1 := e.Nds[0].X[1]
+	y2 := e.Nds[1].X[1]
+	y3 := e.Nds[2].X[1]
+	y4 := e.Nds[3].X[1]
 
-	//return &Element2D{
-	//	nodes: []Node{n1, n2, n3, n4},
-	//}, nil
+	x := (1 - ee) * (1 - nn) * x1
+	x += (1 + ee) * (1 - nn) * x2
+	x += (1 + ee) * (1 + nn) * x3
+	x += (1 - ee) * (1 + nn) * x4
+	x /= 4
+
+	y := (1 - ee) * (1 - nn) * y1
+	y += (1 + ee) * (1 - nn) * y2
+	y += (1 + ee) * (1 + nn) * y3
+	y += (1 - ee) * (1 + nn) * y4
+	y /= 4
+	return []float64{x, y}
 }
 
-func (e *Element2D) Bounds() (low, up []float64) {
-	return []float64{e.xmin(), e.ymin()}, []float64{e.xmax(), e.ymax()}
+func (e *Element2D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
+	return e.integrateVol(k, wNode, uNode) + e.integrateBoundary(k, wNode, uNode)
 }
 
-func (e *Element2D) Nodes() []*Node { return e.Nds }
-
-func (e *Element2D) Contains(x []float64) bool {
-	panic("unimplemented")
+func (e *Element2D) IntegrateForce(k Kernel, wNode int) float64 {
+	return e.integrateVol(k, wNode, -1) + e.integrateBoundary(k, wNode, -1)
 }
 
 func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
-	panic("unimplemented")
-	//	var w, u Node = e.Nodes[wNode], nil
-	//	fnFactory := func(iFree int, fixedVar float64) func(x float64) float64 {
-	//		xs := []float64{fixedVar, fixedVar}
-	//		en := []float64{fixedVar, fixedVar}
-	//		return func(x float64) float64 {
-	//			en[iFree] = x
-	//			ee, nn := en[0], en[1]
-	//			xs[0], xs[1] = e.trans.Transform(ee, nn)
-	//			jac := e.trans.ReverseJacobian(ee, nn)
-	//			dxdfree := jac.At(iFree, 0)
-	//			dydfree := jac.At(iFree, 1)
-	//			pars := &KernelParams{X: xs, W: w.Weight(xs), GradW: w.DerivWeight(xs)}
-	//			if uNode < 0 {
-	//				return (dxdfree + dydfree) * k.BoundaryInt(pars)
-	//			}
-	//			u = e.Nodes[uNode]
-	//			pars.U = u.Sample(xs)
-	//			pars.GradU = u.DerivSample(xs)
-	//			return 1 / (dxdfree + dydfree) * k.BoundaryIntU(pars)
-	//		}
-	//	}
-	//
-	//	xFree, yFree := 0, 1
-	//	x1, x2, y1, y2 := -1.0, 1.0, -1.0, 1.0
-	//
-	//	bound := 0.0
-	//	bound += quad.Fixed(fnFactory(xFree, y1), x1, x2, 2, quad.Legendre{}, 0)
-	//	bound += quad.Fixed(fnFactory(xFree, y2), x1, x2, 2, quad.Legendre{}, 0)
-	//	bound += quad.Fixed(fnFactory(yFree, x1), y1, y2, 2, quad.Legendre{}, 0)
-	//	bound += quad.Fixed(fnFactory(yFree, x2), y1, y2, 2, quad.Legendre{}, 0)
-	//	return bound
-}
+	var w, u *Node = e.Nds[wNode], nil
+	fnFactory := func(iFree int, fixedVar float64, n1 int) func(x float64) float64 {
+		n2 := n1 + 1
+		if n2 >= len(e.Nds) {
+			n2 = 0
+		}
+		x1, y1 := e.Nds[n1].X[0], e.Nds[n1].X[1]
+		x2, y2 := e.Nds[n2].X[0], e.Nds[n2].X[1]
+		// determinant of jacobian to convert from ref element integral to
+		// real coord integral
+		jacdet := math.Sqrt(math.Pow(x1-x2, 2)+math.Pow(y1-y2, 2)) / 2
 
-//
-func (e *Element2D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
-	panic("unimplemented")
-	//	return e.integrateVol(k, wNode, uNode) + e.integrateBoundary(k, wNode, uNode)
-}
+		refxs := []float64{fixedVar, fixedVar}
+		return func(ref float64) float64 {
+			refxs[iFree] = ref
+			xs := e.Coord(refxs)
+			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: vecMult(w.WeightDeriv(refxs), 1/jacdet)}
+			if uNode < 0 {
+				return k.BoundaryInt(pars) * jacdet
+			}
+			u = e.Nds[uNode]
+			pars.U = u.Value(refxs)
+			pars.GradU = vecMult(u.ValueDeriv(refxs), 1/jacdet)
+			return k.BoundaryIntU(pars) * jacdet
+		}
+	}
 
-//
-func (e *Element2D) IntegrateForce(k Kernel, wNode int) float64 {
-	panic("unimplemented")
-	//	return e.integrateVol(k, wNode, -1) + e.integrateBoundary(k, wNode, -1)
+	xFree, yFree := 0, 1
+
+	bound := 0.0
+	bound += quad.Fixed(fnFactory(xFree, -1, 0), -1, 1, 2, quad.Legendre{}, 0)
+	bound += quad.Fixed(fnFactory(xFree, 1, 2), -1, 1, 2, quad.Legendre{}, 0)
+	bound += quad.Fixed(fnFactory(yFree, -1, 3), -1, 1, 2, quad.Legendre{}, 0)
+	bound += quad.Fixed(fnFactory(yFree, 1, 1), -1, 1, 2, quad.Legendre{}, 0)
+	return bound
 }
 
 func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
 	panic("unimplemented")
-	//	outer := func(ee float64) float64 {
-	//		inner := func(nn float64) float64 {
-	//			xs := make([]float64, 2)
-	//			xs[0], xs[1] = e.trans.Transform(ee, nn)
-	//			jacdet := e.trans.ReverseJacobianDet(ee, nn)
-	//
-	//			var w, u Node = e.Nodes[wNode], nil
-	//			pars := &KernelParams{X: xs, W: w.Weight(xs), GradW: w.DerivWeight(xs)}
-	//			if uNode < 0 {
-	//				return jacdet * k.VolInt(pars)
-	//			}
-	//			u = e.Nodes[uNode]
-	//			pars.U = u.Sample(xs)
-	//			pars.GradU = u.DerivSample(xs)
-	//			return jacdet * k.VolIntU(pars)
-	//		}
-	//		return quad.Fixed(inner, -1, 1, len(e.Nodes), quad.Legendre{}, 0)
-	//	}
-	//	return quad.Fixed(outer, -1, 1, len(e.Nodes), quad.Legendre{}, 0)
+	outer := func(refx float64) float64 {
+		inner := func(refy float64) float64 {
+			refxs := []float64{refx, refy}
+			xs := e.Coord(refxs)
+
+			// determinant of jacobian to convert from ref element integral to
+			// real coord integral
+			jacdet := e.jacdet(refxs)
+
+			var w, u *Node = e.Nds[wNode], nil
+			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: vecMult(w.WeightDeriv(refxs), 1/jacdet)}
+			if uNode < 0 {
+				return jacdet * k.VolInt(pars)
+			}
+			u = e.Nds[uNode]
+			pars.U = u.Value(xs)
+			pars.GradU = vecMult(u.ValueDeriv(xs), 1/jacdet)
+			return jacdet * k.VolIntU(pars)
+		}
+		return quad.Fixed(inner, -1, 1, 2, quad.Legendre{}, 0)
+	}
+	return quad.Fixed(outer, -1, 1, 2, quad.Legendre{}, 0)
+}
+
+// jacdet computes the determinant of the element's 2D jacobian:
+// J = | dx/de  dy/de |
+//     | dx/dn  dy/dn |
+func (e *Element2D) jacdet(refxs []float64) float64 {
+	ee, nn := refxs[0], refxs[1]
+	x1 := e.Nds[0].X[0]
+	x2 := e.Nds[1].X[0]
+	x3 := e.Nds[2].X[0]
+	x4 := e.Nds[3].X[0]
+	y1 := e.Nds[0].X[1]
+	y2 := e.Nds[1].X[1]
+	y3 := e.Nds[2].X[1]
+	y4 := e.Nds[3].X[1]
+
+	dxde := (-(1-nn)*x1 + (1-nn)*x2 + (1+nn)*x3 - (1+nn)*x4) / 4
+	dyde := (-(1-nn)*y1 + (1-nn)*y2 + (1+nn)*y3 - (1+nn)*y4) / 4
+	dxdn := (-(1-ee)*x1 - (1+ee)*x2 + (1+ee)*x3 + (1-ee)*x4) / 4
+	dydn := (-(1-ee)*y1 - (1+ee)*y2 + (1+ee)*y3 + (1-ee)*y4) / 4
+	return dxde*dydn - dxdn*dyde
 }
