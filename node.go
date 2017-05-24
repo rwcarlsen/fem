@@ -78,20 +78,47 @@ func (fn Lagrange1D) Deriv(refx []float64) []float64 {
 
 type Bilinear struct {
 	// Index indicates which of the four corners the shape function takes on the value 1.0:
-	//
-	//    (x=-1, y=-1): Index=1
+	//    (x=-1, y=-1): Index=0
 	//    (x= 1, y=-1): Index=1
-	//    (x=-1, y= 1): Index=1
-	//    (x= 1, y= 1): Index=1
+	//    (x=-1, y= 1): Index=2
+	//    (x= 1, y= 1): Index=3
 	Index int
-	// Polynomial order of the shape function.
-	Order int
 }
 
 func (fn Bilinear) Value(refx []float64) float64 {
-	panic("unimplemented")
+	x, y := refx[0], refx[1]
+	switch fn.Index {
+	case 0:
+		return (-x/2 + .5) * (-y/2 + .5)
+	case 1:
+		return (x/2 + .5) * (-y/2 + .5)
+	case 2:
+		return (-x/2 + .5) * (y/2 + .5)
+	case 3:
+		return (x/2 + .5) * (y/2 + .5)
+	default:
+		panic("invalid index for bilinear shape function")
+	}
 }
 
 func (fn Bilinear) Deriv(refx []float64) []float64 {
-	panic("unimplemented")
+	x, y := refx[0], refx[1]
+	du := make([]float64, len(refx))
+	switch fn.Index {
+	case 0:
+		du[0] = (y - 1) / 4
+		du[1] = (x - 1) / 4
+	case 1:
+		du[0] = (-y + 1) / 4
+		du[1] = (-x - 1) / 4
+	case 2:
+		du[0] = (-y - 1) / 4
+		du[1] = (-x + 1) / 4
+	case 3:
+		du[0] = (y + 1) / 4
+		du[1] = (x + 1) / 4
+	default:
+		panic("invalid index for bilinear shape function")
+	}
+	return du
 }
