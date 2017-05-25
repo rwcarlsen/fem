@@ -246,23 +246,24 @@ func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
 	}
 }
 
-type Element2D struct {
+type ElemQuad4 struct {
 	Nds []*Node
 }
 
-// Creates a new bilinear quad element.  (x1,y1);(x2,y2);... must specify coordinates for the
+// NewElemQuad4 creates a new 2D bilinear quad element.
+// (x1[0],x1[1]);(x2[0],x2[1]);... must specify coordinates for the
 // corners running counter-clockwise around the element.
-func NewElementSimple2D(x1, y1, x2, y2, x3, y3, x4, y4 float64) *Element2D {
-	n1 := &Node{X: []float64{x1, y1}, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 0}}
-	n2 := &Node{X: []float64{x2, y2}, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 1}}
-	n3 := &Node{X: []float64{x3, y3}, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 2}}
-	n4 := &Node{X: []float64{x4, y4}, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 3}}
-	return &Element2D{Nds: []*Node{n1, n2, n3, n4}}
+func NewElemQuad4(x1, x2, x3, x4 []float64) *ElemQuad4 {
+	n1 := &Node{X: x1, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 0}}
+	n2 := &Node{X: x2, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 1}}
+	n3 := &Node{X: x3, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 2}}
+	n4 := &Node{X: x4, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 3}}
+	return &ElemQuad4{Nds: []*Node{n1, n2, n3, n4}}
 }
 
-func (e *Element2D) Nodes() []*Node { return e.Nds }
+func (e *ElemQuad4) Nodes() []*Node { return e.Nds }
 
-func (e *Element2D) Contains(x []float64) bool {
+func (e *ElemQuad4) Contains(x []float64) bool {
 	ax, ay := x[0], x[1]
 	tot := 0.0
 	for i := 0; i < len(e.Nds); i++ {
@@ -277,7 +278,7 @@ func (e *Element2D) Contains(x []float64) bool {
 	return math.Abs(area-e.Area()) < 1e-6
 }
 
-func (e *Element2D) Area() float64 {
+func (e *ElemQuad4) Area() float64 {
 	ax, ay := e.Nds[0].X[0], e.Nds[0].X[1]
 	tot := 0.0
 	for i := 1; i < len(e.Nds); i++ {
@@ -291,16 +292,16 @@ func (e *Element2D) Area() float64 {
 	return tot / 2
 }
 
-func (e *Element2D) Bounds() (low, up []float64) {
+func (e *ElemQuad4) Bounds() (low, up []float64) {
 	return []float64{e.xmin(), e.ymin()}, []float64{e.xmax(), e.ymax()}
 }
 
-func (e *Element2D) xmin() float64 { return e.min(0, true) }
-func (e *Element2D) xmax() float64 { return e.min(0, false) }
-func (e *Element2D) ymin() float64 { return e.min(1, true) }
-func (e *Element2D) ymax() float64 { return e.min(1, false) }
+func (e *ElemQuad4) xmin() float64 { return e.min(0, true) }
+func (e *ElemQuad4) xmax() float64 { return e.min(0, false) }
+func (e *ElemQuad4) ymin() float64 { return e.min(1, true) }
+func (e *ElemQuad4) ymax() float64 { return e.min(1, false) }
 
-func (e *Element2D) min(coord int, less bool) float64 {
+func (e *ElemQuad4) min(coord int, less bool) float64 {
 	extreme := e.Nds[0].X[coord]
 	for _, n := range e.Nds[1:] {
 		if n.X[coord] < extreme && less || n.X[coord] > extreme && !less {
@@ -310,7 +311,7 @@ func (e *Element2D) min(coord int, less bool) float64 {
 	return extreme
 }
 
-func (e *Element2D) Coord(refx []float64) []float64 {
+func (e *ElemQuad4) Coord(refx []float64) []float64 {
 	ee, nn := refx[0], refx[1]
 	x1 := e.Nds[0].X[0]
 	x2 := e.Nds[1].X[0]
@@ -335,15 +336,15 @@ func (e *Element2D) Coord(refx []float64) []float64 {
 	return []float64{x, y}
 }
 
-func (e *Element2D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
+func (e *ElemQuad4) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
 	return e.integrateVol(k, wNode, uNode) + e.integrateBoundary(k, wNode, uNode)
 }
 
-func (e *Element2D) IntegrateForce(k Kernel, wNode int) float64 {
+func (e *ElemQuad4) IntegrateForce(k Kernel, wNode int) float64 {
 	return e.integrateVol(k, wNode, -1) + e.integrateBoundary(k, wNode, -1)
 }
 
-func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
+func (e *ElemQuad4) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	var w, u *Node = e.Nds[wNode], nil
 	fnFactory := func(iFree int, fixedVar float64, n1 int) func(x float64) float64 {
 		n2 := n1 + 1
@@ -381,7 +382,7 @@ func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	return bound
 }
 
-func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
+func (e *ElemQuad4) integrateVol(k Kernel, wNode, uNode int) float64 {
 	panic("unimplemented")
 	outer := func(refx float64) float64 {
 		inner := func(refy float64) float64 {
@@ -410,7 +411,7 @@ func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
 // jacdet computes the determinant of the element's 2D jacobian:
 // J = | dx/de  dy/de |
 //     | dx/dn  dy/dn |
-func (e *Element2D) jacdet(refxs []float64) float64 {
+func (e *ElemQuad4) jacdet(refxs []float64) float64 {
 	ee, nn := refxs[0], refxs[1]
 	x1 := e.Nds[0].X[0]
 	x2 := e.Nds[1].X[0]

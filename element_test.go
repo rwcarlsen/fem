@@ -32,7 +32,7 @@ func TestElement1D(t *testing.T) {
 	}
 }
 
-func TestElement2D_Contains(t *testing.T) {
+func TestElemQuad4_Contains(t *testing.T) {
 	tests := []struct {
 		Xs     [][]float64
 		Points [][]float64
@@ -84,7 +84,7 @@ func TestElement2D_Contains(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		e := &Element2D{}
+		e := &ElemQuad4{}
 		for _, x := range test.Xs {
 			e.Nds = append(e.Nds, &Node{X: x})
 		}
@@ -99,7 +99,7 @@ func TestElement2D_Contains(t *testing.T) {
 	}
 }
 
-func TestElement2D_Area(t *testing.T) {
+func TestElemQuad4_Area(t *testing.T) {
 	tests := []struct {
 		Xs       [][]float64
 		WantArea float64
@@ -152,7 +152,7 @@ func TestElement2D_Area(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		e := &Element2D{}
+		e := &ElemQuad4{}
 		for _, x := range test.Xs {
 			e.Nds = append(e.Nds, &Node{X: x})
 		}
@@ -180,16 +180,20 @@ func (k testKernel) BoundaryIntU(p *KernelParams) float64     { return float64(k
 func (k testKernel) BoundaryInt(p *KernelParams) float64      { return float64(k) * p.U }
 func (k testKernel) IsDirichlet(xs []float64) (bool, float64) { return false, 0 }
 
-func TestElement2D_IntegrateBoundary(t *testing.T) {
+func TestElemQuad4_IntegrateBoundary(t *testing.T) {
 	return // TODO: implement
 
 	const volume = 1
 	const boundary = 2
 	tests := []struct {
-		X1, Y1, V1 float64
-		X2, Y2, V2 float64
-		X3, Y3, V3 float64
-		X4, Y4, V4 float64
+		X1 []float64
+		X2 []float64
+		X3 []float64
+		X4 []float64
+		V1 float64
+		V2 float64
+		V3 float64
+		V4 float64
 
 		Integral  int
 		WantConst float64
@@ -200,8 +204,11 @@ func TestElement2D_IntegrateBoundary(t *testing.T) {
 	}{
 		{ // scale+translate
 			Integral: boundary,
-			X1:       0, Y1: 0, X2: 1, Y2: 0, X3: 1, Y3: 1, X4: 0, Y4: 1,
-			V1: 1, V2: 1, V3: 1, V4: 1,
+			X1:       []float64{0, 0},
+			X2:       []float64{1, 0},
+			X3:       []float64{1, 1},
+			X4:       []float64{0, 1},
+			V1:       1, V2: 1, V3: 1, V4: 1,
 			WantConst: 4,
 			WantU1:    1,
 			WantU2:    1,
@@ -209,8 +216,11 @@ func TestElement2D_IntegrateBoundary(t *testing.T) {
 			WantU4:    1,
 		}, { // translate
 			Integral: boundary,
-			X1:       0, Y1: 0, X2: 2, Y2: 0, X3: 2, Y3: 2, X4: 0, Y4: 2,
-			V1: 1, V2: 1, V3: 1, V4: 1,
+			X1:       []float64{0, 0},
+			X2:       []float64{2, 0},
+			X3:       []float64{2, 2},
+			X4:       []float64{0, 2},
+			V1:       1, V2: 1, V3: 1, V4: 1,
 			WantConst: 8,
 			WantU1:    2,
 			WantU2:    2,
@@ -218,8 +228,11 @@ func TestElement2D_IntegrateBoundary(t *testing.T) {
 			WantU4:    2,
 		}, { // translate, scale, non-uniform node U values
 			Integral: boundary,
-			X1:       0, Y1: 0, X2: 2, Y2: 0, X3: 2, Y3: 2, X4: 0, Y4: 2,
-			V1: 1, V2: 2, V3: 2, V4: 1,
+			X1:       []float64{0, 0},
+			X2:       []float64{2, 0},
+			X3:       []float64{2, 2},
+			X4:       []float64{0, 2},
+			V1:       1, V2: 2, V3: 2, V4: 1,
 			WantConst: 8,
 			WantU1:    2,
 			WantU2:    4,
@@ -227,8 +240,11 @@ func TestElement2D_IntegrateBoundary(t *testing.T) {
 			WantU4:    2,
 		}, { // translate, scale, distort
 			Integral: boundary,
-			X1:       0, Y1: 0, X2: 2, Y2: 0, X3: 1, Y3: 3, X4: 0, Y4: 2,
-			V1: 1, V2: 1, V3: 1, V4: 1,
+			X1:       []float64{0, 0},
+			X2:       []float64{2, 0},
+			X3:       []float64{1, 3},
+			X4:       []float64{0, 2},
+			V1:       1, V2: 1, V3: 1, V4: 1,
 			WantConst: 8,
 			WantU1:    2,
 			WantU2:    4,
@@ -236,8 +252,11 @@ func TestElement2D_IntegrateBoundary(t *testing.T) {
 			WantU4:    2,
 		}, { // identity mapping
 			Integral: volume,
-			X1:       0, Y1: 0, X2: 2, Y2: 0, X3: 2, Y3: 2, X4: 0, Y4: 2,
-			V1: 1, V2: 2, V3: 2, V4: 1,
+			X1:       []float64{0, 0},
+			X2:       []float64{2, 0},
+			X3:       []float64{2, 2},
+			X4:       []float64{0, 2},
+			V1:       1, V2: 2, V3: 2, V4: 1,
 			WantConst: 8,
 			WantU1:    2,
 			WantU2:    4,
@@ -248,7 +267,7 @@ func TestElement2D_IntegrateBoundary(t *testing.T) {
 
 	for i, test := range tests {
 		ts := test
-		elem := NewElementSimple2D(ts.X1, ts.Y1, ts.X2, ts.Y2, ts.X3, ts.Y3, ts.X4, ts.Y4)
+		elem := NewElemQuad4(ts.X1, ts.X2, ts.X3, ts.X4)
 
 		nds := elem.Nodes()
 		nds[0].Set(test.V1, 1)
