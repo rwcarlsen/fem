@@ -164,6 +164,50 @@ func TestElemQuad4_Area(t *testing.T) {
 	}
 }
 
+func TestElemQuad4_Coord(t *testing.T) {
+	tests := []struct {
+		x1, x2, x3, x4 []float64
+		RefPoints      [][]float64
+		RealPoints     [][]float64
+	}{
+		{ // unit square
+			x1:         []float64{0, 0},
+			x2:         []float64{1, 0},
+			x3:         []float64{1, 1},
+			x4:         []float64{0, 1},
+			RefPoints:  [][]float64{{-1, -1}, {0, 0}, {0.5, -.5}},
+			RealPoints: [][]float64{{0, 0}, {.5, .5}, {.75, .25}},
+		}, { // rotate node order - but still counter-clockwise
+			x1:         []float64{0, 1},
+			x2:         []float64{0, 0},
+			x3:         []float64{1, 0},
+			x4:         []float64{1, 1},
+			RefPoints:  [][]float64{{-1, -1}, {0, 0}, {0.5, -.5}},
+			RealPoints: [][]float64{{0, 1}, {.5, .5}, {.25, .25}},
+		}, { // unregular, translated quadrilateral
+			x1:         []float64{2, 2},
+			x2:         []float64{3, 2},
+			x3:         []float64{3, 3},
+			x4:         []float64{1, 4},
+			RefPoints:  [][]float64{{-1, -1}, {0, 0}, {-1, 1}},
+			RealPoints: [][]float64{{2, 2}, {2.25, 2.75}, {1, 4}},
+		},
+	}
+
+	for i, test := range tests {
+		e := NewElemQuad4(test.x1, test.x2, test.x3, test.x4)
+		t.Logf("case %v (x1=%v, x2=%v, x3=%v, x4=%v):", i+1, test.x1, test.x2, test.x3, test.x4)
+		for j, refx := range test.RefPoints {
+			want := test.RealPoints[j]
+			if x := e.Coord(refx); x[0] != want[0] || x[1] != want[1] {
+				t.Errorf("FAIL point %v (refx=%v) real coords: got %v, want %v", j+1, refx, x, want)
+			} else {
+				t.Logf("     point %v (refx=%v) real coords: got %v", j+1, refx, x)
+			}
+		}
+	}
+}
+
 type constKernel float64
 
 func (k constKernel) VolIntU(p *KernelParams) float64          { return float64(k) }
