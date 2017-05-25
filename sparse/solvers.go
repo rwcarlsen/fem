@@ -43,8 +43,6 @@ type Cholesky struct {
 // Incomplete factorizations can be computed by passing in an L that ignores nonzero entries in
 // certain locations.
 func NewCholesky(L, A Matrix) *Cholesky {
-	fmt.Println("cholesky factorizing...")
-	defer fmt.Println("...done factorizing")
 	size, _ := A.Dims()
 	if L == nil {
 		L = NewSparse(size)

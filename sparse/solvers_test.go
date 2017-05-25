@@ -121,7 +121,7 @@ func TestCGSolve(t *testing.T) {
 
 	cg := &CG{MaxIter: maxiter, Tol: tol}
 	got, _ := cg.Solve(s, f)
-	t.Logf("converged in %v iterations", cg.Niter)
+	t.Logf("converged in %v iterations", cg.niter)
 	for i := range got {
 		if math.Abs(got[i]-want.At(i, 0)) > tol {
 			t.Fatalf("solutions don't match")
@@ -371,6 +371,6 @@ func BenchmarkCGSolve(b *testing.B) {
 	cg := &CG{MaxIter: maxiter, Tol: tol}
 	for i := 0; i < b.N; i++ {
 		cg.Solve(s, f)
-		b.Logf("converged in %v iterations", cg.Niter)
+		b.Logf("converged in %v iterations", cg.niter)
 	}
 }
