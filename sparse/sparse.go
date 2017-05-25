@@ -127,8 +127,8 @@ func RowMult(m Matrix, row int, mult float64) {
 }
 
 // Permute maps i and j indices to new i and j values idendified by the given
-// mapping.  Values stored in src.At(i,j) are stored into dst.At(mapping[i], mapping[j])
-// The permuted matrix is stored in dst overwriting values stored
+// mapping.  Values stored in src.At(i,j) are stored into dst.At(mapping[i],
+// mapping[j]) The permuted matrix is stored in dst overwriting values stored
 // there and the original remains unmodified.
 func Permute(dst, src Matrix, mapping []int) {
 	size, _ := src.Dims()

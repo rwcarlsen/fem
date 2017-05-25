@@ -13,13 +13,14 @@ type Solver interface {
 	Status() string
 }
 
-// Preconditioner is a function that takes a (e.g. resitual) vector r and applies a
-// preconditioning matrix to it and stores the result in z.
+// Preconditioner is a function that takes a (e.g. resitual) vector r and
+// applies a preconditioning matrix to it and stores the result in z.
 type Preconditioner func(z, r []float64)
 
-// IncompleteCholesky returns a preconditioner that uses an incomplete cholesky factorization
-// (incomplete via maintaining the same sparsity pattern as the matrix A).  The factorization is
-// then used to solve for z in the system A*z=r for the preconditioner - i.e. for the preconditioning
+// IncompleteCholesky returns a preconditioner that uses an incomplete
+// cholesky factorization (incomplete via maintaining the same sparsity
+// pattern as the matrix A).  The factorization is then used to solve for z in
+// the system A*z=r for the preconditioner - i.e. for the preconditioning
 // M^(-1)*r, M is the incomplete cholesky factorization.
 func IncompleteCholesky(A Matrix) Preconditioner {
 	size, _ := A.Dims()
@@ -38,10 +39,11 @@ type Cholesky struct {
 	L Matrix
 }
 
-// NewCholesky computes the Cholesky decomposition of A and stores it in L.  The returned Cholesky
-// object's L is the same as the passed in L.  If L is nil, a new Sparse matrix will be created.
-// Incomplete factorizations can be computed by passing in an L that ignores nonzero entries in
-// certain locations.
+// NewCholesky computes the Cholesky decomposition of A and stores it in L.
+// The returned Cholesky object's L is the same as the passed in L.  If L is
+// nil, a new Sparse matrix will be created.  Incomplete factorizations can be
+// computed by passing in an L that ignores nonzero entries in certain
+// locations.
 func NewCholesky(L, A Matrix) *Cholesky {
 	size, _ := A.Dims()
 	if L == nil {
@@ -115,8 +117,8 @@ func (c *Cholesky) Solve(b []float64) (x []float64, err error) {
 type CG struct {
 	MaxIter int
 	Tol     float64
-	// Preconditioner is the preconditioning matrix used for each iteration of the CG solver. If
-	// it is nil, a default preconditioner will be used.
+	// Preconditioner is the preconditioning matrix used for each iteration of
+	// the CG solver. If it is nil, a default preconditioner will be used.
 	Preconditioner Preconditioner
 	niter          int
 	ndof           int
@@ -134,8 +136,6 @@ func (cg *CG) Status() string {
 
 func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 	if cg.Preconditioner == nil {
-		//cg.Preconditioner = func(z, r []float64) { copy(z, r) }
-		//cg.Preconditioner = IncompleteLU(A)
 		cg.Preconditioner = IncompleteCholesky(A)
 	}
 
@@ -185,8 +185,8 @@ func (DenseLU) Solve(A Matrix, b []float64) ([]float64, error) {
 
 }
 
-// GaussJordan performs Gaussian-Jordan elimination on an augmented matrix [A|b] to solve the
-// system A*x=b.
+// GaussJordan performs Gaussian-Jordan elimination on an augmented matrix
+// [A|b] to solve the system A*x=b.
 type GaussJordan struct{}
 
 func (GaussJordan) Status() string { return "" }
@@ -208,8 +208,8 @@ func (gj GaussJordan) Solve(A Matrix, b []float64) ([]float64, error) {
 
 	// first pass
 	for j := 0; j < size; j++ {
-		// find a first row with a nonzero entry in column i on or below diagonal
-		// to use as the pivot row.
+		// find a first row with a nonzero entry in column i on or below
+		// diagonal to use as the pivot row.
 		piv := -1
 		for i := 0; i < size; i++ {
 			if A.At(i, j) != 0 && !donerows[i] {
@@ -217,7 +217,6 @@ func (gj GaussJordan) Solve(A Matrix, b []float64) ([]float64, error) {
 				break
 			}
 		}
-		//fmt.Printf("selected row %v as pivot\n", piv)
 		pivots[j] = piv
 		donerows[piv] = true
 
@@ -246,8 +245,8 @@ func (gj GaussJordan) Solve(A Matrix, b []float64) ([]float64, error) {
 	return x, nil
 }
 
-// GaussJordanSymm uses gaussian elimination with the Cuthill-McKee algorithm to permute the
-// matrix indices/DOF to have a smaller bandwidth.
+// GaussJordanSymm uses gaussian elimination with the Cuthill-McKee algorithm
+// to permute the matrix indices/DOF to have a smaller bandwidth.
 type GaussJordanSym struct{}
 
 func (GaussJordanSym) Status() string { return "" }

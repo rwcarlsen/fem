@@ -77,8 +77,9 @@ func RCM(A Matrix) []int {
 	nextlevel := []int{startrow}
 	for n := 0; n < size; n++ {
 		if len(nextlevel) == 0 {
-			// Matrix must not represent a fully connected graph. We need to choose a random dof/index
-			// that we haven't remapped yet to start from
+			// Matrix does not represent a fully connected graph. We need to
+			// choose a random dof/index that we haven't remapped yet to start
+			// from
 			for _, k := range degreemap {
 				if _, ok := mapping[k]; !ok {
 					nextlevel = []int{k}
