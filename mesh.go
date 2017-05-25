@@ -200,7 +200,7 @@ func (m *Mesh) Solve(k Kernel) error {
 		return err
 	}
 
-	// populate node/DOF solution values in mesh
+	// populate mesh with node/DOF solution values from solver
 	for i, val := range x {
 		nodes := m.indexNode[rsubindices[i]]
 		for _, n := range nodes {
@@ -208,6 +208,7 @@ func (m *Mesh) Solve(k Kernel) error {
 			n.W = 1
 		}
 	}
+	// populate node/DOF solutions from known/dirichlet conditions
 	for i, val := range knowns {
 		nodes := m.indexNode[i]
 		for _, n := range nodes {
