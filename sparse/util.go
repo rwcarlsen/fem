@@ -10,7 +10,7 @@ func ApplyPivot(A Matrix, b []float64, col int, piv int, dir int) {
 	pval := A.At(piv, col)
 	bval := b[piv]
 	for i, aij := range A.NonzeroRows(col) {
-		cond := ((dir < 0) && i > piv) || ((dir > 0) && i < piv) || (i != piv)
+		cond := ((dir < 0) && i > piv) || ((dir > 0) && i < piv) || (dir == 0 && i != piv)
 		if i != piv && cond {
 			mult := -aij / pval
 			RowCombination(A, piv, i, mult)

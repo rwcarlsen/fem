@@ -6,8 +6,6 @@ import (
 	"github.com/gonum/matrix/mat64"
 )
 
-const eps = 1e-9
-
 type RestrictByWidth struct {
 	Matrix
 	MaxWidth int
@@ -45,6 +43,9 @@ type Matrix interface {
 }
 
 type Sparse struct {
+	// Tol specifies an absolute tolerance within which values are treated
+	// as and set to zero.
+	Tol float64
 	// map[col]map[row]val
 	nonzeroRow []map[int]float64
 	// map[row]map[col]val
@@ -52,8 +53,11 @@ type Sparse struct {
 	size       int
 }
 
+// NewSparse creates a new square [size]x[size] sparse matrix representation with a default
+// tolerance of 1e-6 for zero values.
 func NewSparse(size int) *Sparse {
 	return &Sparse{
+		Tol:        1e-6,
 		nonzeroRow: make([]map[int]float64, size),
 		nonzeroCol: make([]map[int]float64, size),
 		size:       size,
@@ -85,7 +89,7 @@ func (m *Sparse) T() mat64.Matrix     { return mat64.Transpose{m} }
 func (m *Sparse) Dims() (int, int)    { return m.size, m.size }
 func (m *Sparse) At(i, j int) float64 { return m.nonzeroCol[i][j] }
 func (m *Sparse) Set(i, j int, v float64) {
-	if math.Abs(v) < eps {
+	if math.Abs(v) < m.Tol {
 		delete(m.nonzeroCol[i], j)
 		delete(m.nonzeroRow[j], i)
 		return

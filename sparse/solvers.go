@@ -122,14 +122,12 @@ type CG struct {
 	Preconditioner Preconditioner
 	niter          int
 	ndof           int
-	cond           float64
 }
 
 func (cg *CG) Status() string {
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "CG Solver Stats:\n")
 	fmt.Fprintf(&buf, "    %v dof\n", cg.ndof)
-	fmt.Fprintf(&buf, "    matrix condition number: %v\n", cg.cond)
 	fmt.Fprintf(&buf, "    converged in %v iterations", cg.niter)
 	return buf.String()
 }
@@ -141,7 +139,6 @@ func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 
 	size := len(b)
 	cg.ndof = size
-	cg.cond = mat64.Cond(A, 1)
 
 	x = make([]float64, size)
 	r := make([]float64, size)
@@ -154,7 +151,7 @@ func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 	cg.Preconditioner(z, r)
 	copy(p, z)
 
-	for cg.niter = 0; cg.niter < cg.MaxIter; cg.niter++ {
+	for cg.niter = 1; cg.niter <= cg.MaxIter; cg.niter++ {
 		alpha := dot(r, z) / dot(p, Mul(A, p))
 		vecAdd(x, x, vecMult(p, alpha))             // xnext = x+alpha*p
 		vecSub(rnext, r, vecMult(Mul(A, p), alpha)) // rnext = r-alpha*A*p
