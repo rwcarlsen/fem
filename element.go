@@ -122,23 +122,44 @@ func InterpolateDeriv(e Element, refx []float64) []float64 {
 // Element1D represents a 1D finite element.  It assumes len(x) == 1 (i.e.
 // only one dimension of independent variables.
 type Element1D struct {
-	Nds []*Node
+	Nds               []*Node
+	lowbound, upbound []float64
+	// jacdet holds the determinant of jacobian to used convert from ref
+	// element integral to real coord integral
+	jacdet    float64
+	invjacdet float64
+	// all below fields are used as state-holders for quadrature integration func
+	wNode, uNode int
+	kern         Kernel
+	refxs        []float64
+	pars         *KernelParams
+	pars2        *KernelParams
 }
 
 // NewElementSimple1D generates a lagrange polynomial interpolating element of
 // degree len(xs)-1 using the values in xs as the interpolation points/nodes.
 func NewElementSimple1D(xs []float64) *Element1D {
-	e := &Element1D{}
+	e := &Element1D{refxs: make([]float64, 1), pars: &KernelParams{}, pars2: &KernelParams{}}
 	for i := range xs {
 		order := len(xs) - 1
 		nodepos := []float64{xs[i]}
 		n := &Node{X: nodepos, U: 1.0, W: 1.0, ShapeFunc: Lagrange1D{Index: i, Order: order}}
 		e.Nds = append(e.Nds, n)
 	}
+
+	e.jacdet = (e.right() - e.left()) / 2
+	e.invjacdet = 1 / e.jacdet
+
 	return e
 }
 
-func (e *Element1D) Bounds() (low, up []float64) { return []float64{e.left()}, []float64{e.right()} }
+func (e *Element1D) Bounds() (low, up []float64) {
+	if e.lowbound == nil {
+		e.lowbound = []float64{e.left()}
+		e.upbound = []float64{e.right()}
+	}
+	return e.lowbound, e.upbound
+}
 
 func (e *Element1D) Nodes() []*Node { return e.Nds }
 
@@ -162,47 +183,55 @@ func (e *Element1D) IntegrateForce(k Kernel, wNode int) float64 {
 	return e.integrateVol(k, wNode, -1) + e.integrateBoundary(k, wNode, -1)
 }
 
+var refLeft = []float64{-1}
+var refRight = []float64{1}
+
 func (e *Element1D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
-	// determinant of jacobian to convert from ref element integral to
-	// real coord integral
-	jacdet := (e.right() - e.left()) / 2
-	var refLeft = []float64{-1}
-	var refRight = []float64{1}
 	var w, u *Node = e.Nds[wNode], nil
-	x1 := []float64{e.left()}
-	x2 := []float64{e.right()}
-	pars1 := &KernelParams{X: x1, W: w.Weight(refLeft), GradW: vecMult(w.WeightDeriv(refLeft), 1/jacdet)}
-	pars2 := &KernelParams{X: x2, W: w.Weight(refRight), GradW: vecMult(w.WeightDeriv(refRight), 1/jacdet)}
+	if e.pars2.X == nil {
+		e.pars.X = make([]float64, 1)
+		e.pars2.X = make([]float64, 1)
+	}
+
+	e.pars.X[0] = e.left()
+	e.pars.W = w.Weight(refLeft)
+	e.pars.GradW = vecMult(w.WeightDeriv(refLeft), e.invjacdet)
+	e.pars2.X[0] = e.right()
+	e.pars2.W = w.Weight(refRight)
+	e.pars2.GradW = vecMult(w.WeightDeriv(refRight), e.invjacdet)
 
 	if uNode < 0 {
-		return k.BoundaryInt(pars1) + k.BoundaryInt(pars2)
+		return k.BoundaryInt(e.pars) + k.BoundaryInt(e.pars2)
 	}
 	u = e.Nds[uNode]
-	pars1.U = u.Value(refLeft)
-	pars1.GradU = vecMult(u.ValueDeriv(refLeft), 1/jacdet)
-	pars2.U = u.Value(refRight)
-	pars2.GradU = vecMult(u.ValueDeriv(refRight), 1/jacdet)
-	return k.BoundaryIntU(pars1) + k.BoundaryIntU(pars2)
+	e.pars.U = u.Value(refLeft)
+	e.pars.GradU = vecMult(u.ValueDeriv(refLeft), e.invjacdet)
+
+	e.pars2.U = u.Value(refRight)
+	e.pars2.GradU = vecMult(u.ValueDeriv(refRight), e.invjacdet)
+	return k.BoundaryIntU(e.pars) + k.BoundaryIntU(e.pars2)
+}
+
+func (e *Element1D) volQuadFunc(ref float64) float64 {
+	var w, u *Node = e.Nds[e.wNode], nil
+	e.refxs[0] = ref
+	e.pars.X = e.Coord(e.refxs)
+	e.pars.W = w.Weight(e.refxs)
+	e.pars.GradW = vecMult(w.WeightDeriv(e.refxs), e.invjacdet)
+
+	if e.uNode < 0 {
+		return e.kern.VolInt(e.pars)
+	}
+	u = e.Nds[e.uNode]
+	e.pars.U = u.Value(e.refxs)
+	e.pars.GradU = vecMult(u.ValueDeriv(e.refxs), e.invjacdet)
+	return e.kern.VolIntU(e.pars)
 }
 
 func (e *Element1D) integrateVol(k Kernel, wNode, uNode int) float64 {
-	// determinant of jacobian to convert from ref element integral to
-	// real coord integral
-	jacdet := (e.right() - e.left()) / 2
-	fn := func(ref float64) float64 {
-		refxs := []float64{ref}
-		xs := e.Coord(refxs)
-		var w, u *Node = e.Nds[wNode], nil
-		pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: vecMult(w.WeightDeriv(refxs), 1/jacdet)}
-		if uNode < 0 {
-			return k.VolInt(pars)
-		}
-		u = e.Nds[uNode]
-		pars.U = u.Value(refxs)
-		pars.GradU = vecMult(u.ValueDeriv(refxs), 1/jacdet)
-		return k.VolIntU(pars)
-	}
-	return quad.Fixed(fn, -1, 1, len(e.Nds), quad.Legendre{}, 0) * jacdet
+	e.wNode, e.uNode = wNode, uNode
+	e.kern = k
+	return quad.Fixed(e.volQuadFunc, -1, 1, len(e.Nds), quad.Legendre{}, 0) * e.jacdet
 }
 
 // PrintFunc prints the element value and derivative in tab-separated form
