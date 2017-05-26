@@ -59,7 +59,7 @@ func Dot(a, b []float64) float64 {
 }
 
 // vecProject projects multidimensional point p onto the line connecting points
-// end1 and end2.  All three vectors and the return vector have the same
+// end1 and end2 and returns the projected point p.  All three vectors and the return vector have the same
 // length/dimension.
 func vecProject(p []float64, end1, end2 []float64) []float64 {
 	if len(p) != len(end1) || len(end1) != len(end2) {
@@ -75,7 +75,7 @@ func vecProject(p []float64, end1, end2 []float64) []float64 {
 	for i := range s {
 		proj[i] = s[i] * vDotS / sDotS
 	}
-	return proj
+	return vecSub(proj, vecMult(end1, -1)) // add back end1
 }
 
 func vecL2Norm(vec []float64) float64 {

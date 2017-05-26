@@ -76,6 +76,13 @@ type Boundary2D struct {
 	Tol float64
 }
 
+func (b *Boundary2D) Append(x, y float64, t BoundaryType, val float64) {
+	b.X = append(b.X, x)
+	b.Y = append(b.Y, y)
+	b.Types = append(b.Types, t)
+	b.Vals = append(b.Vals, val)
+}
+
 // loc returns the index (into Type/Val) of the point x on the boundary.
 // It returns -1 if x is not on the boundary.
 func (b *Boundary2D) loc(x []float64) int {
@@ -83,12 +90,19 @@ func (b *Boundary2D) loc(x []float64) int {
 	for i := range b.X {
 		x1, x2 := b.X[i], b.X[0] // wrap last node to 1st node
 		y1, y2 := b.Y[i], b.Y[0] // wrap last node to 1st node
-		if i < len(b.X)-1 {
+		if i+1 < len(b.X) {
 			x2 = b.X[i+1]
 			y2 = b.Y[i+1]
 		}
 
-		if xx < x1 || x2 < xx || yy < y1 || y2 < yy {
+		if x2 < x1 {
+			x1, x2 = x2, x1
+		}
+		if y2 < y1 {
+			y1, y2 = y2, y1
+		}
+
+		if xx+b.Tol < x1 || x2 < xx-b.Tol || yy+b.Tol < y1 || y2 < yy-b.Tol {
 			continue
 		}
 
@@ -198,8 +212,6 @@ func (p *SecVal) Val(x []float64) float64 {
 // HeatConduction implements 1D heat conduction physics.
 // TODO: update the Boundary... methods to handle multi-dimensions
 type HeatConduction struct {
-	// X is the node/mesh points.
-	X []float64
 	// K is thermal conductivity (W/m/K).
 	K Valer
 	// S is heat source strength (W/m^3).

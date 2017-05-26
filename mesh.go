@@ -59,6 +59,10 @@ func (m *Mesh) finalize() {
 	if len(m.nodeIndex) > 0 {
 		return
 	}
+	if m.nodeIndex == nil {
+		m.nodeIndex = map[*Node]int{}
+		m.indexNode = map[int][]*Node{}
+	}
 	nextId := 0
 	ids := map[posHash]int{}
 	for _, e := range m.Elems {
@@ -97,7 +101,7 @@ func (m *Mesh) AddElement(e Element) error {
 // points and order specifies the polynomial shape function order used in each element to
 // approximate the solution.
 func NewMeshSimple1D(nodePos []float64, order int) (*Mesh, error) {
-	m := &Mesh{Bandwidth: order, nodeIndex: map[*Node]int{}, indexNode: map[int][]*Node{}}
+	m := &Mesh{Bandwidth: order}
 	if (len(nodePos)-1)%order != 0 {
 		return nil, fmt.Errorf("incompatible mesh order (%v) and node count (%v)", order, len(nodePos))
 	}
@@ -109,6 +113,30 @@ func NewMeshSimple1D(nodePos []float64, order int) (*Mesh, error) {
 			xs[j] = nodePos[i*order+j]
 		}
 		m.AddElement(NewElementSimple1D(xs))
+	}
+	return m, nil
+}
+
+// NewMeshSimple2D creates a structured mesh with Quad4 (bilinear quadrangles) elements covering
+// the grid of points specified by y-axis-parallel lines drawn through each x in xs and
+// x-axis-parallel points drawn through each y in ys.
+func NewMeshSimple2D(xs, ys []float64) (*Mesh, error) {
+	m := &Mesh{}
+	if len(xs) < 1 || len(ys) < 1 {
+		return nil, fmt.Errorf("simple 2D mesh requires at least two x and two y points")
+	}
+
+	for i, x1 := range xs[:len(xs)-1] {
+		x2 := xs[i+1]
+		for j, y1 := range ys[:len(ys)-1] {
+			y2 := ys[j+1]
+
+			xx1 := []float64{x1, y1}
+			xx2 := []float64{x2, y1}
+			xx3 := []float64{x2, y2}
+			xx4 := []float64{x1, y2}
+			m.AddElement(NewElemQuad4(xx1, xx2, xx3, xx4))
+		}
 	}
 	return m, nil
 }
@@ -276,7 +304,7 @@ func (m *Mesh) StiffnessMatrix(k Kernel) *sparse.Sparse {
 				mat.Set(a, b, mat.At(a, b)+v)
 				mat.Set(b, a, mat.At(a, b))
 				if ok, _ := k.IsDirichlet(n.X); ok {
-					for c := 0; c < len(elem.Nodes()); c++ {
+					for c := range mat.NonzeroCols(a) {
 						mat.Set(a, c, 0.0)
 					}
 					mat.Set(a, a, 1.0)
