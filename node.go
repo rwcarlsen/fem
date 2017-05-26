@@ -87,18 +87,20 @@ type Bilinear struct {
 
 func (fn Bilinear) Value(refx []float64) float64 {
 	x, y := refx[0], refx[1]
+	v := 0.0
 	switch fn.Index {
 	case 0:
-		return (-x/2 + .5) * (-y/2 + .5)
+		v = (-x/2 + .5) * (-y/2 + .5)
 	case 1:
-		return (x/2 + .5) * (-y/2 + .5)
+		v = (x/2 + .5) * (-y/2 + .5)
 	case 2:
-		return (x/2 + .5) * (y/2 + .5)
+		v = (x/2 + .5) * (y/2 + .5)
 	case 3:
-		return (-x/2 + .5) * (y/2 + .5)
+		v = (-x/2 + .5) * (y/2 + .5)
 	default:
 		panic("invalid index for bilinear shape function")
 	}
+	return v
 }
 
 func (fn Bilinear) Deriv(refx []float64) []float64 {

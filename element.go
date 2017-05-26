@@ -412,7 +412,6 @@ func (e *ElemQuad4) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 }
 
 func (e *ElemQuad4) integrateVol(k Kernel, wNode, uNode int) float64 {
-	panic("unimplemented")
 	outer := func(refx float64) float64 {
 		inner := func(refy float64) float64 {
 			refxs := []float64{refx, refy}
@@ -428,7 +427,7 @@ func (e *ElemQuad4) integrateVol(k Kernel, wNode, uNode int) float64 {
 				return jacdet * k.VolInt(pars)
 			}
 			u = e.Nds[uNode]
-			pars.U = u.Value(xs)
+			pars.U = u.Value(refxs)
 			pars.GradU = vecMult(u.ValueDeriv(xs), 1/jacdet)
 			return jacdet * k.VolIntU(pars)
 		}

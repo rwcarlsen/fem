@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestElement1D(t *testing.T) {
 	tests := []struct {
@@ -225,8 +228,6 @@ func (k testKernel) BoundaryInt(p *KernelParams) float64      { return float64(k
 func (k testKernel) IsDirichlet(xs []float64) (bool, float64) { return false, 0 }
 
 func TestElemQuad4_IntegrateBoundary(t *testing.T) {
-	return // TODO: implement
-
 	const volume = 1
 	const boundary = 2
 	tests := []struct {
@@ -289,11 +290,11 @@ func TestElemQuad4_IntegrateBoundary(t *testing.T) {
 			X3:       []float64{1, 3},
 			X4:       []float64{0, 2},
 			V1:       1, V2: 1, V3: 1, V4: 1,
-			WantConst: 8,
+			WantConst: 2 + math.Sqrt(10) + math.Sqrt(2) + 2,
 			WantU1:    2,
-			WantU2:    4,
-			WantU3:    4,
-			WantU4:    2,
+			WantU2:    1 + .5*math.Sqrt(10),
+			WantU3:    .5*math.Sqrt(10) + .5*math.Sqrt(2),
+			WantU4:    .5*math.Sqrt(2) + 1,
 		}, { // identity mapping
 			Integral: volume,
 			X1:       []float64{0, 0},
@@ -301,11 +302,11 @@ func TestElemQuad4_IntegrateBoundary(t *testing.T) {
 			X3:       []float64{2, 2},
 			X4:       []float64{0, 2},
 			V1:       1, V2: 2, V3: 2, V4: 1,
-			WantConst: 8,
-			WantU1:    2,
-			WantU2:    4,
-			WantU3:    4,
-			WantU4:    2,
+			WantConst: 4,
+			WantU1:    1,
+			WantU2:    2,
+			WantU3:    2,
+			WantU4:    1,
 		},
 	}
 
@@ -319,6 +320,7 @@ func TestElemQuad4_IntegrateBoundary(t *testing.T) {
 		nds[2].Set(test.V3, 1)
 		nds[3].Set(test.V4, 1)
 
+		// test integration of constant value around the boundary
 		var kconst constKernel = 1
 		val := elem.integrateBoundary(kconst, 0, 0)
 		if test.Integral == volume {
@@ -331,6 +333,7 @@ func TestElemQuad4_IntegrateBoundary(t *testing.T) {
 			t.Logf("         const kernel: got %v", val)
 		}
 
+		// test integration around the boundary separately for each node's shape function
 		var ku testKernel = 1
 		testu := func(j int, want float64) {
 			val := elem.integrateBoundary(ku, 0, j)
