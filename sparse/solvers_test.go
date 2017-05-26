@@ -201,7 +201,7 @@ func TestGaussJordan(t *testing.T) {
 
 		failed := false
 		for i := range want {
-			if diff := math.Abs(gotx[i] - want[i]); diff > eps {
+			if diff := math.Abs(gotx[i] - want[i]); diff > refA.Tol {
 				failed = true
 				break
 			}
@@ -286,7 +286,7 @@ func TestGaussJordanSym(t *testing.T) {
 
 		failed := false
 		for i := range want {
-			if diff := math.Abs(gotx[i] - want[i]); diff > eps {
+			if diff := math.Abs(gotx[i] - want[i]); diff > refA.Tol {
 				failed = true
 				break
 			}

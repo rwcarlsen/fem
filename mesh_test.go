@@ -61,7 +61,6 @@ func TestMeshSolve(t *testing.T) {
 		}
 
 		hc := &HeatConduction{
-			X:        test.Xs,
 			K:        ConstVal(test.K),
 			S:        ConstVal(test.S),
 			Boundary: NewBoundary1D(test.Xs, test.LeftVal, test.RightVal, test.Left, test.Right),
