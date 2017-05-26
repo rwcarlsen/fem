@@ -151,6 +151,7 @@ func TestHeatKernel2D() {
 	x2 := xs[end]
 	y1 := ys[0]
 	y2 := ys[end]
+
 	for i := 0; i < *nsoln+1; i++ {
 		for j := 0; j < *nsoln+1; j++ {
 			x := []float64{

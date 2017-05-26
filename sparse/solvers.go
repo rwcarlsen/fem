@@ -202,6 +202,8 @@ func (gj GaussJordan) Solve(A Matrix, b []float64) ([]float64, error) {
 
 	donerows := make(map[int]bool, size)
 	pivots := make([]int, size)
+	fmt.Printf("% .3v\n", mat64.Formatted(A))
+	fmt.Printf("%.3v\n", b)
 
 	// first pass
 	for j := 0; j < size; j++ {
@@ -218,11 +220,15 @@ func (gj GaussJordan) Solve(A Matrix, b []float64) ([]float64, error) {
 		donerows[piv] = true
 
 		ApplyPivot(A, b, j, pivots[j], -1)
+		fmt.Printf("% .3v\n", mat64.Formatted(A))
+		fmt.Printf("%.3v\n", b)
 	}
 
 	// second pass
 	for j := size - 1; j >= 0; j-- {
 		ApplyPivot(A, b, j, pivots[j], 1)
+		fmt.Printf("% .3v\n", mat64.Formatted(A))
+		fmt.Printf("%.3v\n", b)
 	}
 
 	// renormalize each row so that leading nonzeros are ones (row echelon to
