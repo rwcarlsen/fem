@@ -118,6 +118,9 @@ func nextRCMLevel(A Matrix, mapping map[int]int, ii []int) []int {
 	var nextlevel []int
 	for _, i := range ii {
 		for j := range A.NonzeroCols(i) {
+			// TODO: this if condition needs to also protect against j's that
+			// haven't been inserted into mapping yet because they were
+			// appended during the current call to nextRCMLevel
 			if _, ok := mapping[j]; !ok {
 				nextlevel = append(nextlevel, j)
 			}
