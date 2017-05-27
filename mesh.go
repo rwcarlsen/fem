@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/gonum/matrix/mat64"
 	"github.com/rwcarlsen/fem/sparse"
 )
 
@@ -192,8 +191,6 @@ func (m *Mesh) Solve(k Kernel) error {
 		sparse.ApplyPivot(A, b, i, i, -1)
 		sparse.ApplyPivot(A, b, i, i, 1)
 	}
-
-	fmt.Printf("% .4v\n", mat64.Formatted(A))
 
 	// remove knowns (i.e. dirichlet BCs) from matrix system to preserve symmetry
 	size := m.NumDOF() - len(knowns)
