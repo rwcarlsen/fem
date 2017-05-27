@@ -127,10 +127,10 @@ func NewMeshSimple2D(xs, ys []float64) (*Mesh, error) {
 		return nil, fmt.Errorf("simple 2D mesh requires at least two x and two y points")
 	}
 
-	for i, x1 := range xs[:len(xs)-1] {
-		x2 := xs[i+1]
-		for j, y1 := range ys[:len(ys)-1] {
-			y2 := ys[j+1]
+	for j, y1 := range ys[:len(ys)-1] {
+		y2 := ys[j+1]
+		for i, x1 := range xs[:len(xs)-1] {
+			x2 := xs[i+1]
 
 			xx1 := []float64{x1, y1}
 			xx2 := []float64{x2, y1}

@@ -405,9 +405,9 @@ func (e *ElemQuad4) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 
 	bound := 0.0
 	bound += quad.Fixed(fnFactory(xFree, -1, 0), -1, 1, 2, quad.Legendre{}, 0)
+	bound += quad.Fixed(fnFactory(yFree, 1, 1), -1, 1, 2, quad.Legendre{}, 0)
 	bound += quad.Fixed(fnFactory(xFree, 1, 2), -1, 1, 2, quad.Legendre{}, 0)
 	bound += quad.Fixed(fnFactory(yFree, -1, 3), -1, 1, 2, quad.Legendre{}, 0)
-	bound += quad.Fixed(fnFactory(yFree, 1, 1), -1, 1, 2, quad.Legendre{}, 0)
 	return bound
 }
 
