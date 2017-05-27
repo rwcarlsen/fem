@@ -68,8 +68,7 @@ func RCM(A Matrix) []int {
 	}
 
 	sort.SliceStable(degreemap, func(i, j int) bool {
-		return len(A.NonzeroCols(degreemap[i])) < len(A.NonzeroCols(degreemap[j]))
-		//return len(A.NonzeroCols(degreemap[i])) > len(A.NonzeroCols(degreemap[j]))
+		return len(A.NonzeroCols(degreemap[i])) > len(A.NonzeroCols(degreemap[j]))
 	})
 	startrow := degreemap[0]
 
@@ -90,9 +89,6 @@ func RCM(A Matrix) []int {
 			}
 		}
 
-		//sort.SliceStable(nextlevel, func(i, j int) bool {
-		//	return len(A.NonzeroCols(nextlevel[i])) > len(A.NonzeroCols(nextlevel[j]))
-		//})
 		nextlevel = nextRCMLevel(A, mapping, nextlevel)
 		if len(mapping) >= size {
 			break
@@ -117,16 +113,27 @@ func RCM(A Matrix) []int {
 func nextRCMLevel(A Matrix, mapping map[int]int, ii []int) []int {
 	var nextlevel []int
 	size, _ := A.Dims()
+	tmp := []int{}
 	for _, i := range ii {
+		tmp = tmp[:0]
 		for j := range A.NonzeroCols(i) {
 			if _, ok := mapping[j]; !ok {
-				nextlevel = append(nextlevel, j)
-				mapping[j] = len(mapping)
-				if len(mapping) >= size {
-					return nextlevel
+				tmp = append(tmp, j)
+				if len(mapping)+len(tmp) >= size {
+					break
 				}
 			}
 		}
+
+		// sort tmp and insert into mapping batched by src row
+		sort.SliceStable(tmp, func(i, j int) bool {
+			return len(A.NonzeroCols(tmp[i])) > len(A.NonzeroCols(tmp[j]))
+		})
+		for _, index := range tmp {
+			mapping[index] = len(mapping)
+			nextlevel = append(nextlevel, index)
+		}
 	}
+
 	return nextlevel
 }
