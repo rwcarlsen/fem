@@ -69,6 +69,7 @@ func RCM(A Matrix) []int {
 
 	sort.SliceStable(degreemap, func(i, j int) bool {
 		return len(A.NonzeroCols(degreemap[i])) < len(A.NonzeroCols(degreemap[j]))
+		//return len(A.NonzeroCols(degreemap[i])) > len(A.NonzeroCols(degreemap[j]))
 	})
 	startrow := degreemap[0]
 
@@ -89,6 +90,9 @@ func RCM(A Matrix) []int {
 			}
 		}
 
+		//sort.SliceStable(nextlevel, func(i, j int) bool {
+		//	return len(A.NonzeroCols(nextlevel[i])) > len(A.NonzeroCols(nextlevel[j]))
+		//})
 		nextlevel = nextRCMLevel(A, mapping, nextlevel)
 		if len(mapping) >= size {
 			break
