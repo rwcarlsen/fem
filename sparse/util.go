@@ -61,7 +61,6 @@ func vecMult(v []float64, mult float64) []float64 {
 // that provides better bandwidth properties for solvers.
 func RCM(A Matrix) []int {
 	size, _ := A.Dims()
-	mapping := make(map[int]int, size)
 
 	degreemap := make([]int, size)
 	for i := range degreemap {
@@ -75,6 +74,8 @@ func RCM(A Matrix) []int {
 
 	// breadth-first search across adjacency/connections between nodes/dofs
 	nextlevel := []int{startrow}
+	mapping := make(map[int]int, size)
+	mapping[startrow] = 0
 	for n := 0; n < size; n++ {
 		if len(nextlevel) == 0 {
 			// Matrix does not represent a fully connected graph. We need to
@@ -88,15 +89,10 @@ func RCM(A Matrix) []int {
 			}
 		}
 
-		for _, i := range nextlevel {
-			if _, ok := mapping[i]; !ok {
-				mapping[i] = len(mapping)
-			}
-		}
+		nextlevel = nextRCMLevel(A, mapping, nextlevel)
 		if len(mapping) >= size {
 			break
 		}
-		nextlevel = nextRCMLevel(A, mapping, nextlevel)
 	}
 
 	slice := make([]int, size)
@@ -116,13 +112,15 @@ func RCM(A Matrix) []int {
 
 func nextRCMLevel(A Matrix, mapping map[int]int, ii []int) []int {
 	var nextlevel []int
+	size, _ := A.Dims()
 	for _, i := range ii {
 		for j := range A.NonzeroCols(i) {
-			// TODO: this if condition needs to also protect against j's that
-			// haven't been inserted into mapping yet because they were
-			// appended during the current call to nextRCMLevel
 			if _, ok := mapping[j]; !ok {
 				nextlevel = append(nextlevel, j)
+				mapping[j] = len(mapping)
+				if len(mapping) >= size {
+					return nextlevel
+				}
 			}
 		}
 	}
