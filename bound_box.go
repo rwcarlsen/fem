@@ -42,13 +42,18 @@ func (b *Box) Find(x []float64) (Element, error) {
 	for _, child := range b.children {
 		for i := range x {
 			if child.Low[i] <= x[i] && x[i] <= child.Up[i] {
-				return child.Find(x)
+				elem, err := child.Find(x)
+				if err == nil {
+					return elem, nil
+				}
 			}
 		}
 	}
-	for _, e := range b.Elems {
-		if e.Contains(x) {
-			return e, nil
+	if len(b.children) == 0 {
+		for _, e := range b.Elems {
+			if e.Contains(x) {
+				return e, nil
+			}
 		}
 	}
 	return nil, fmt.Errorf("element not found in bounding Box tree for x=%v", x)
