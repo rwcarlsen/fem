@@ -308,6 +308,9 @@ func TestElemQuad4_Integrate(t *testing.T) {
 			WantU3:    2,
 			WantU4:    1,
 		},
+		// TODO: add a volume integral test case that would catch the error I
+		// just fixed where the shape function/node's value was calculated
+		// using the real coordinates instead of the reference coordinates.
 	}
 
 	for i, test := range tests {

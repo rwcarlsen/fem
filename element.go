@@ -428,7 +428,7 @@ func (e *ElemQuad4) integrateVol(k Kernel, wNode, uNode int) float64 {
 			}
 			u = e.Nds[uNode]
 			pars.U = u.Value(refxs)
-			pars.GradU = vecMult(u.ValueDeriv(xs), 1/jacdet)
+			pars.GradU = vecMult(u.ValueDeriv(refxs), 1/jacdet)
 			return jacdet * k.VolIntU(pars)
 		}
 		return quad.Fixed(inner, -1, 1, 2, quad.Legendre{}, 0)
