@@ -390,13 +390,17 @@ func (e *ElemQuad4) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 		return func(ref float64) float64 {
 			refxs[iFree] = ref
 			xs := e.Coord(refxs)
-			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: vecMult(w.WeightDeriv(refxs), 1/jacdet)}
+
+			gradw := w.WeightDeriv(refxs)
+			e.convertderiv(gradw, refxs)
+			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: gradw}
 			if uNode < 0 {
 				return k.BoundaryInt(pars) * jacdet
 			}
 			u = e.Nds[uNode]
 			pars.U = u.Value(refxs)
-			pars.GradU = vecMult(u.ValueDeriv(refxs), 1/jacdet)
+			pars.GradU = u.ValueDeriv(refxs)
+			e.convertderiv(pars.GradU, refxs)
 			return k.BoundaryIntU(pars) * jacdet
 		}
 	}
@@ -422,18 +426,46 @@ func (e *ElemQuad4) integrateVol(k Kernel, wNode, uNode int) float64 {
 			jacdet := e.jacdet(refxs)
 
 			var w, u *Node = e.Nds[wNode], nil
-			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: vecMult(w.WeightDeriv(refxs), 1/jacdet)}
+			gradw := w.WeightDeriv(refxs)
+			e.convertderiv(gradw, refxs)
+			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: gradw}
 			if uNode < 0 {
 				return jacdet * k.VolInt(pars)
 			}
 			u = e.Nds[uNode]
 			pars.U = u.Value(refxs)
-			pars.GradU = vecMult(u.ValueDeriv(refxs), 1/jacdet)
+			pars.GradU = u.ValueDeriv(refxs)
+			e.convertderiv(pars.GradU, refxs)
 			return jacdet * k.VolIntU(pars)
 		}
 		return quad.Fixed(inner, -1, 1, 2, quad.Legendre{}, 0)
 	}
 	return quad.Fixed(outer, -1, 1, 2, quad.Legendre{}, 0)
+}
+
+// convertderiv converts the dN/de and dN/dn (derivatives w.r.t. the reference coordinates) to
+// dN/dx and dN/dy (derivatives w.r.t. the real coordinates).  This is used to convert the GradU
+// and GradW terms to be the correct values when building the stiffness matrix.
+func (e *ElemQuad4) convertderiv(refgradu []float64, refxs []float64) {
+	ee, nn := refxs[0], refxs[1]
+	x1 := e.Nds[0].X[0]
+	x2 := e.Nds[1].X[0]
+	x3 := e.Nds[2].X[0]
+	x4 := e.Nds[3].X[0]
+	y1 := e.Nds[0].X[1]
+	y2 := e.Nds[1].X[1]
+	y3 := e.Nds[2].X[1]
+	y4 := e.Nds[3].X[1]
+
+	dxde := 1. / 4 * ((-1+nn)*x1 + (1-nn)*x2 + (1+nn)*x3 + (-1-nn)*x4)
+	dyde := 1. / 4 * ((-1+nn)*y1 + (1-nn)*y2 + (1+nn)*y3 + (-1-nn)*y4)
+
+	dxdn := 1. / 4 * ((-1+ee)*x1 + (-1-ee)*x2 + (1+ee)*x3 + (1-ee)*x4)
+	dydn := 1. / 4 * ((-1+ee)*y1 + (-1-ee)*y2 + (1+ee)*y3 + (1-ee)*y4)
+
+	dude, dudn := refgradu[0], refgradu[1]
+	refgradu[0] = (dude*dydn - dudn*dyde) / (dxde*dydn - dxdn*dyde)
+	refgradu[1] = (dude*dxdn - dudn*dxde) / (dyde*dxdn - dydn*dxde)
 }
 
 // jacdet computes the determinant of the element's 2D jacobian:
