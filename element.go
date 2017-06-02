@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/gonum/integrate/quad"
+	"github.com/gonum/matrix/mat64"
 	"github.com/gonum/optimize"
 )
 
@@ -447,31 +448,15 @@ func (e *ElemQuad4) integrateVol(k Kernel, wNode, uNode int) float64 {
 // dN/dx and dN/dy (derivatives w.r.t. the real coordinates).  This is used to convert the GradU
 // and GradW terms to be the correct values when building the stiffness matrix.
 func (e *ElemQuad4) convertderiv(refgradu []float64, refxs []float64) {
-	ee, nn := refxs[0], refxs[1]
-	x1 := e.Nds[0].X[0]
-	x2 := e.Nds[1].X[0]
-	x3 := e.Nds[2].X[0]
-	x4 := e.Nds[3].X[0]
-	y1 := e.Nds[0].X[1]
-	y2 := e.Nds[1].X[1]
-	y3 := e.Nds[2].X[1]
-	y4 := e.Nds[3].X[1]
+	jac := e.jacobian(refxs)
 
-	dxde := 1. / 4 * ((-1+nn)*x1 + (1-nn)*x2 + (1+nn)*x3 + (-1-nn)*x4)
-	dyde := 1. / 4 * ((-1+nn)*y1 + (1-nn)*y2 + (1+nn)*y3 + (-1-nn)*y4)
-
-	dxdn := 1. / 4 * ((-1+ee)*x1 + (-1-ee)*x2 + (1+ee)*x3 + (1-ee)*x4)
-	dydn := 1. / 4 * ((-1+ee)*y1 + (-1-ee)*y2 + (1+ee)*y3 + (1-ee)*y4)
-
-	dude, dudn := refgradu[0], refgradu[1]
-	refgradu[0] = (dude*dydn - dudn*dyde) / (dxde*dydn - dxdn*dyde)
-	refgradu[1] = (dude*dxdn - dudn*dxde) / (dyde*dxdn - dydn*dxde)
+	var soln mat64.Vector
+	soln.SolveVec(jac, mat64.NewVector(2, refgradu))
+	refgradu[0] = soln.At(0, 0)
+	refgradu[1] = soln.At(1, 0)
 }
 
-// jacdet computes the determinant of the element's 2D jacobian:
-// J = | dx/de  dy/de |
-//     | dx/dn  dy/dn |
-func (e *ElemQuad4) jacdet(refxs []float64) float64 {
+func (e *ElemQuad4) jacobian(refxs []float64) *mat64.Dense {
 	ee, nn := refxs[0], refxs[1]
 	x1 := e.Nds[0].X[0]
 	x2 := e.Nds[1].X[0]
@@ -486,5 +471,12 @@ func (e *ElemQuad4) jacdet(refxs []float64) float64 {
 	dyde := (-(1-nn)*y1 + (1-nn)*y2 + (1+nn)*y3 - (1+nn)*y4) / 4
 	dxdn := (-(1-ee)*x1 - (1+ee)*x2 + (1+ee)*x3 + (1-ee)*x4) / 4
 	dydn := (-(1-ee)*y1 - (1+ee)*y2 + (1+ee)*y3 + (1-ee)*y4) / 4
-	return dxde*dydn - dxdn*dyde
+	return mat64.NewDense(2, 2, []float64{dxde, dyde, dxdn, dydn})
+}
+
+// jacdet computes the determinant of the element's 2D jacobian:
+// J = | dx/de  dy/de |
+//     | dx/dn  dy/dn |
+func (e *ElemQuad4) jacdet(refxs []float64) float64 {
+	return mat64.Det(e.jacobian(refxs))
 }
