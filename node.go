@@ -124,3 +124,50 @@ func (fn Bilinear) Deriv(refx []float64) []float64 {
 	}
 	return du
 }
+
+type Lagrange2D struct {
+	// Index indicates for which of the nodes the shape function takes on the value 1.0.  For
+	// Index=0, x=-1 and y=-1.  Subsequent (increasing) Index numbers indicate the nodes running
+	// counter-clockwise from left to right (increasing x) in rows from bottom to top (increasing
+	// y).  Index runs from zero to (Order+1)^2-1 inclusive.
+	// Boundary nodes can be identified by the following createria:
+	//
+	//    * Bottom: Index/3==0
+	//    * Top: Index/3==Order
+	//    * Left: Index%3==O
+	//    * Right: Index%3==Order
+	Index int
+	Order int
+}
+
+func (fn Lagrange2D) Value(refx []float64) float64 {
+	n := fn.Order + 1
+	if fn.Index > n*n-1 {
+		panic("incompatible Index and Order")
+	}
+
+	xx, yy, u := refx[0], refx[1], 1.0
+
+	xindex := -1 + float64(fn.Index%n)*2/float64(fn.Order)
+	for i := 0; i < n; i++ {
+		if i == fn.Index%n {
+			continue
+		}
+		x0 := -1 + 2*float64(i)/float64(fn.Order)
+		u *= (xx - x0) / (xindex - x0)
+	}
+
+	yindex := -1 + float64(fn.Index/n)*2/float64(fn.Order)
+	for i := 0; i < n; i++ {
+		if i == fn.Index/n {
+			continue
+		}
+		y0 := -1 + 2*float64(i)/float64(fn.Order)
+		u *= (yy - y0) / (yindex - y0)
+	}
+	return u
+}
+
+func (fn Lagrange2D) Deriv(refx []float64) []float64 {
+	panic("unimplemented")
+}
