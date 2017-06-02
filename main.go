@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"math"
 	"os"
+	"os/exec"
 	"runtime/pprof"
 
 	"github.com/gonum/matrix/mat64"
@@ -21,6 +25,7 @@ var solver = flag.String("solver", "gaussian", "solver type (gaussian, denselu, 
 var dim = flag.Int("dim", 1, "dimesionality of sample problem - either 1 or 2")
 
 var cpuprofile = flag.String("cpuprofile", "", "profile file name")
+var plot = flag.String("plot", "", "'svg' to create svg plot with gnuplot")
 
 func main() {
 	log.SetFlags(0)
@@ -66,36 +71,18 @@ func TestHeatKernel() {
 	mesh, err := NewMeshSimple1D(xs, *order)
 	check(err)
 
-	if *printmats {
-		stiffness := mesh.StiffnessMatrix(hc)
-		fmt.Printf("stiffness:\n% .3v\n", mat64.Formatted(stiffness))
-		force := mesh.ForceVector(hc)
-		fmt.Printf("force:\n% .3v\n", force)
-	}
+	solveProb(mesh, hc)
+	var buf bytes.Buffer
+	printSolution(&buf, mesh, []float64{xs[0]}, []float64{xs[len(xs)-1]})
 
-	switch *solver {
-	case "gaussian":
-		mesh.Solver = sparse.GaussJordan{}
-	case "cg":
-		mesh.Solver = &sparse.CG{MaxIter: *iter, Tol: *usertol}
-	case "denselu":
-		mesh.Solver = sparse.DenseLU{}
-	default:
-		log.Fatalf("unrecognized solver %v", *solver)
-	}
-
-	err = mesh.Solve(hc)
-	check(err)
-	log.Print(mesh.Solver.Status())
-
-	fmt.Println("Solution:")
-	for i := 0; i < *nsoln+1; i++ {
-		x1 := xs[0]
-		x2 := xs[len(xs)-1]
-		x := []float64{float64(i)/float64(*nsoln)*(x2-x1) + x1}
-		y, err := mesh.Interpolate(x)
+	if *plot == "" {
+		log.Print("Solution:")
+		fmt.Print(buf.String())
+	} else {
+		cmd := exec.Command("gnuplot", "-e", `set terminal svg; set output "`+*plot+`"; plot "-" u 1:2 w l`)
+		cmd.Stdin = &buf
+		err := cmd.Run()
 		check(err)
-		fmt.Printf("%v\t%v\n", x[0], y)
 	}
 }
 
@@ -103,9 +90,10 @@ func TestHeatKernel2D() {
 	// build mesh
 	xs := []float64{}
 	ys := []float64{}
-	for i := 0; i < *nnodes; i++ {
-		xs = append(xs, float64(i)/float64(*nnodes-1)*4)
-		ys = append(ys, float64(i)/float64(*nnodes-1)*4)
+	nacross := int(math.Sqrt(float64(*nnodes)))
+	for i := 0; i < nacross; i++ {
+		xs = append(xs, float64(i)/float64(nacross-1)*4)
+		ys = append(ys, float64(i)/float64(nacross-1)*4)
 	}
 	mesh, err := NewMeshSimple2D(xs, ys)
 	check(err)
@@ -113,10 +101,6 @@ func TestHeatKernel2D() {
 	// build kernel and boundary conditions
 	end := len(xs) - 1
 	boundary := &Boundary2D{Tol: 1e-6}
-	//boundary.Append(xs[0], ys[0], Dirichlet, 0)     // bottom at zero deg
-	//boundary.Append(xs[end], ys[0], Dirichlet, 0)   // right at zero deg
-	//boundary.Append(xs[end], ys[end], Dirichlet, 0) // top at zero deg
-	//boundary.Append(xs[0], ys[end], Dirichlet, 0)   // bottom at zero deg
 	boundary.Append(0, 0, Dirichlet, 0)
 	boundary.Append(1.7, 0, Dirichlet, 0)
 	boundary.Append(3.7, 0, Dirichlet, 8)
@@ -131,10 +115,54 @@ func TestHeatKernel2D() {
 		Boundary: boundary,
 	}
 
+	solveProb(mesh, hc)
+
+	var buf bytes.Buffer
+	minbounds := []float64{xs[0], ys[0]}
+	maxbounds := []float64{xs[end], ys[end]}
+	printSolution(&buf, mesh, minbounds, maxbounds)
+
+	if *plot == "" {
+		log.Print("Solution:")
+		fmt.Print(buf.String())
+	} else {
+		cmd := exec.Command("gnuplot", "-e", `set terminal svg; set output "`+*plot+`"; plot "-" u 1:2:3 w image`)
+		cmd.Stdin = &buf
+		err := cmd.Run()
+		check(err)
+	}
+}
+
+func printSolution(w io.Writer, mesh *Mesh, min, max []float64) {
+	n := len(min)
+	dims := make([]int, n)
+	for i := range dims {
+		dims[i] = *nsoln
+	}
+
+	perms := Permute(nil, dims...)
+	for _, p := range perms {
+		x := make([]float64, len(p))
+		for i, ii := range p {
+			x[i] = float64(ii)/float64(*nsoln)*(max[i]-min[i]) + min[i]
+		}
+		u, err := mesh.Interpolate(x)
+		check(err)
+		if u < 1e-6 {
+			u = 0
+		}
+		for _, val := range x {
+			fmt.Fprintf(w, "%.3v\t", val)
+		}
+		fmt.Fprintf(w, "%.3v\n", u)
+	}
+}
+
+func solveProb(mesh *Mesh, k Kernel) {
 	if *printmats {
-		stiffness := mesh.StiffnessMatrix(hc)
+		stiffness := mesh.StiffnessMatrix(k)
 		fmt.Printf("stiffness:\n% .3v\n", mat64.Formatted(stiffness))
-		force := mesh.ForceVector(hc)
+		force := mesh.ForceVector(k)
 		fmt.Printf("force:\n% .3v\n", force)
 	}
 
@@ -149,25 +177,7 @@ func TestHeatKernel2D() {
 		log.Fatalf("unrecognized solver %v", *solver)
 	}
 
-	err = mesh.Solve(hc)
+	err := mesh.Solve(k)
 	check(err)
 	log.Print(mesh.Solver.Status())
-
-	fmt.Println("Solution:")
-	x1 := xs[0]
-	x2 := xs[end]
-	y1 := ys[0]
-	y2 := ys[end]
-
-	for i := 0; i < *nsoln+1; i++ {
-		for j := 0; j < *nsoln+1; j++ {
-			x := []float64{
-				float64(i)/float64(*nsoln)*(x2-x1) + x1,
-				float64(j)/float64(*nsoln)*(y2-y1) + y1,
-			}
-			u, err := mesh.Interpolate(x)
-			check(err)
-			fmt.Printf("%v\t%v\t%v\n", x[0], x[1], u)
-		}
-	}
 }
