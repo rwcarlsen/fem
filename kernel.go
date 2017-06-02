@@ -128,7 +128,17 @@ func (b *Boundary2D) Val(x []float64) float64 {
 	if i == -1 {
 		return 0.0
 	}
-	return b.Vals[i]
+
+	x1, x2 := []float64{b.X[i], b.Y[i]}, []float64{b.X[0], b.Y[0]}
+	v1, v2 := b.Vals[i], b.Vals[0]
+	if i+1 < len(b.X) {
+		x1, x2 = []float64{b.X[i], b.Y[i]}, []float64{b.X[i+1], b.Y[i+1]}
+		v1, v2 = b.Vals[i], b.Vals[i+1]
+	}
+	length := vecL2Norm(vecSub(x2, x1))
+	dist := vecL2Norm(vecSub(x, x1))
+	frac := dist / length
+	return v1 + frac*(v2-v1)
 }
 
 type KernelParams struct {
