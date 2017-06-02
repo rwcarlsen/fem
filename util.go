@@ -79,11 +79,7 @@ func vecProject(p []float64, end1, end2 []float64) []float64 {
 }
 
 func vecL2Norm(vec []float64) float64 {
-	tot := 0.0
-	for _, v := range vec {
-		tot += v * v
-	}
-	return math.Sqrt(tot)
+	return math.Sqrt(Dot(vec, vec))
 }
 
 func vecMult(v []float64, mult float64) []float64 {

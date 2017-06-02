@@ -113,8 +113,15 @@ func TestHeatKernel2D() {
 	// build kernel and boundary conditions
 	end := len(xs) - 1
 	boundary := &Boundary2D{Tol: 1e-6}
-	boundary.Append(xs[0], ys[0], Dirichlet, 0)     // bottom at zero deg
-	boundary.Append(xs[end], ys[0], Dirichlet, 0)   // right at zero deg
+	//boundary.Append(xs[0], ys[0], Dirichlet, 0)     // bottom at zero deg
+	//boundary.Append(xs[end], ys[0], Dirichlet, 0)   // right at zero deg
+	//boundary.Append(xs[end], ys[end], Dirichlet, 0) // top at zero deg
+	//boundary.Append(xs[0], ys[end], Dirichlet, 0)   // bottom at zero deg
+	boundary.Append(0, 0, Dirichlet, 0)
+	boundary.Append(1.7, 0, Dirichlet, 0)
+	boundary.Append(3.7, 0, Dirichlet, 8)
+	boundary.Append(4.0, 0, Dirichlet, 40)
+	boundary.Append(4.0, 2.9, Dirichlet, 0)
 	boundary.Append(xs[end], ys[end], Dirichlet, 0) // top at zero deg
 	boundary.Append(xs[0], ys[end], Dirichlet, 0)   // bottom at zero deg
 
