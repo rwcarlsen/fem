@@ -1,5 +1,7 @@
 package main
 
+import "math"
+
 type BoundaryType int
 
 const (
@@ -217,6 +219,32 @@ func (p *SecVal) Val(x []float64) float64 {
 		return p.Y[0]
 	}
 	return p.Y[len(p.Y)-1]
+}
+
+type LinVals2D struct {
+	X [][]float64
+	Y []float64
+}
+
+func (p *LinVals2D) Val(x []float64) float64 {
+	mindist := math.Inf(1)
+	minIndex := -1
+	for i := 0; i < len(p.X)-1; i++ {
+		x1, x2 := p.X[i], p.X[i+1]
+		proj := vecProject(x, x1, x2)
+		dist := vecL2Norm(vecSub(x, proj))
+		if dist < mindist {
+			mindist = dist
+			minIndex = i
+		}
+	}
+
+	x1, x2 := p.X[minIndex], p.X[minIndex+1]
+	y1, y2 := p.Y[minIndex], p.Y[minIndex+1]
+	length := vecL2Norm(vecSub(x2, x1))
+	dist := vecL2Norm(vecSub(x, x1))
+	frac := dist / length
+	return y1 + frac*(y2-y1)
 }
 
 // HeatConduction implements 1D heat conduction physics.
