@@ -1,2 +1,5 @@
 fem
+*.test
+*.out
 *.prof
+*.svg
