@@ -257,8 +257,7 @@ func (e *Element1D) PrintFunc(w io.Writer, nsamples int) {
 // tab-separated form with nsamples evenly spaced over the element's domain
 // (one sample per line) in the form:
 //
-//    [x]	[LagrangeNode1-shape(x)]	[LagrangeNode1-shapederiv(x)]	[LagrangeNode2-shape(x)]
-//    ...
+//    [x]	[LagrangeNode1-shape(x)]	[LagrangeNode1-shapederiv(x)]	[LagrangeNode2-shape(x)]   ...
 func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
 	drefx := 2 / (float64(nsamples) - 1)
 	for i := 0; i < nsamples; i++ {
@@ -284,10 +283,10 @@ type ElemQuad4 struct {
 // (x1[0],x1[1]);(x2[0],x2[1]);... must specify coordinates for the
 // corners running counter-clockwise around the element.
 func NewElemQuad4(x1, x2, x3, x4 []float64) *ElemQuad4 {
-	n1 := &Node{X: x1, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 0}}
-	n2 := &Node{X: x2, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 1}}
-	n3 := &Node{X: x3, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 2}}
-	n4 := &Node{X: x4, U: 1.0, W: 1.0, ShapeFunc: Bilinear{Index: 3}}
+	n1 := &Node{X: x1, U: 1.0, W: 1.0, ShapeFunc: Lagrange2D{Order: 1, Index: 0}}
+	n2 := &Node{X: x2, U: 1.0, W: 1.0, ShapeFunc: Lagrange2D{Order: 1, Index: 1}}
+	n3 := &Node{X: x3, U: 1.0, W: 1.0, ShapeFunc: Lagrange2D{Order: 1, Index: 3}}
+	n4 := &Node{X: x4, U: 1.0, W: 1.0, ShapeFunc: Lagrange2D{Order: 1, Index: 2}}
 	return &ElemQuad4{Nds: []*Node{n1, n2, n3, n4}}
 }
 

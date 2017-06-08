@@ -76,55 +76,6 @@ func (fn Lagrange1D) Deriv(refx []float64) []float64 {
 	return []float64{dudx}
 }
 
-type Bilinear struct {
-	// Index indicates which of the four corners the shape function takes on the value 1.0:
-	//    (x=-1, y=-1): Index=0
-	//    (x= 1, y=-1): Index=1
-	//    (x= 1, y= 1): Index=2
-	//    (x=-1, y= 1): Index=3
-	Index int
-}
-
-func (fn Bilinear) Value(refx []float64) float64 {
-	x, y := refx[0], refx[1]
-	v := 0.0
-	switch fn.Index {
-	case 0:
-		v = (-x/2 + .5) * (-y/2 + .5)
-	case 1:
-		v = (x/2 + .5) * (-y/2 + .5)
-	case 2:
-		v = (x/2 + .5) * (y/2 + .5)
-	case 3:
-		v = (-x/2 + .5) * (y/2 + .5)
-	default:
-		panic("invalid index for bilinear shape function")
-	}
-	return v
-}
-
-func (fn Bilinear) Deriv(refx []float64) []float64 {
-	x, y := refx[0], refx[1]
-	du := make([]float64, len(refx))
-	switch fn.Index {
-	case 0:
-		du[0] = (y - 1) / 4
-		du[1] = (x - 1) / 4
-	case 1:
-		du[0] = (-y + 1) / 4
-		du[1] = (-x - 1) / 4
-	case 2:
-		du[0] = (y + 1) / 4
-		du[1] = (x + 1) / 4
-	case 3:
-		du[0] = (-y - 1) / 4
-		du[1] = (-x + 1) / 4
-	default:
-		panic("invalid index for bilinear shape function")
-	}
-	return du
-}
-
 type Lagrange2D struct {
 	// Index indicates for which of the nodes the shape function takes on the value 1.0.  For
 	// Index=0, x=-1 and y=-1.  Subsequent (increasing) Index numbers indicate the nodes running
@@ -149,25 +100,54 @@ func (fn Lagrange2D) Value(refx []float64) float64 {
 	xx, yy, u := refx[0], refx[1], 1.0
 
 	xindex := -1 + float64(fn.Index%n)*2/float64(fn.Order)
-	for i := 0; i < n; i++ {
-		if i == fn.Index%n {
-			continue
-		}
-		x0 := -1 + 2*float64(i)/float64(fn.Order)
-		u *= (xx - x0) / (xindex - x0)
-	}
-
 	yindex := -1 + float64(fn.Index/n)*2/float64(fn.Order)
 	for i := 0; i < n; i++ {
-		if i == fn.Index/n {
-			continue
+		if i != fn.Index%n {
+			x0 := -1 + 2*float64(i)/float64(fn.Order)
+			u *= (xx - x0) / (xindex - x0)
 		}
-		y0 := -1 + 2*float64(i)/float64(fn.Order)
-		u *= (yy - y0) / (yindex - y0)
+		if i != fn.Index/n {
+			y0 := -1 + 2*float64(i)/float64(fn.Order)
+			u *= (yy - y0) / (yindex - y0)
+		}
 	}
+
 	return u
 }
 
 func (fn Lagrange2D) Deriv(refx []float64) []float64 {
-	panic("unimplemented")
+	n := fn.Order + 1
+	if fn.Index > n*n-1 {
+		panic("incompatible Index and Order")
+	}
+
+	xx, yy := refx[0], refx[1]
+	u, dudx, dudy := 1.0, 0.0, 0.0
+
+	xindex := -1 + float64(fn.Index%n)*2/float64(fn.Order)
+	yindex := -1 + float64(fn.Index/n)*2/float64(fn.Order)
+	for i := 0; i < n; i++ {
+		x0 := -1 + 2*float64(i)/float64(fn.Order)
+		y0 := x0
+		ux, uy := 1.0, 1.0
+		if i != fn.Index%n {
+			ux = (xx - x0) / (xindex - x0)
+		}
+		if i != fn.Index/n {
+			uy = (yy - y0) / (yindex - y0)
+		}
+
+		if i != fn.Index%n {
+			dudx = 1/(xindex-x0)*u + (xx-x0)/(xindex-x0)*dudx
+		}
+
+		if i != fn.Index/n {
+			dudy = 1/(yindex-y0)*u + (yy-y0)/(yindex-y0)*dudy
+		}
+		dudx *= uy
+		dudy *= ux
+		u *= ux * uy
+	}
+
+	return []float64{dudx, dudy}
 }
