@@ -77,10 +77,6 @@ func PermConverter(ndiv int) Converter {
 // OptimConverter performs a local optimization using vanilla algorithms (e.g. gradient descent,
 // , newton, etc.) to find the reference coordinates for x.
 func OptimConverter(e Element, x []float64) ([]float64, error) {
-	if !e.Contains(x) {
-		return nil, fmt.Errorf("cannot convert coordinates - element does not contain X=%v", x)
-	}
-
 	p := optimize.Problem{
 		Func: func(trial []float64) float64 {
 			return vecL2Norm(vecSub(x, e.Coord(trial)))
@@ -137,9 +133,9 @@ type Element1D struct {
 	pars2        *KernelParams
 }
 
-// NewElementSimple1D generates a lagrange polynomial interpolating element of
+// NewElement1D generates a lagrange polynomial interpolating element of
 // degree len(xs)-1 using the values in xs as the interpolation points/nodes.
-func NewElementSimple1D(xs []float64) *Element1D {
+func NewElement1D(xs []float64) *Element1D {
 	e := &Element1D{refxs: make([]float64, 1), pars: &KernelParams{}, pars2: &KernelParams{}}
 	for i := range xs {
 		order := len(xs) - 1
@@ -275,62 +271,52 @@ func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
 	}
 }
 
-type ElemQuad4 struct {
-	Nds []*Node
+type Element2D struct {
+	Nds   []*Node
+	Order int
 }
 
-// NewElemQuad4 creates a new 2D bilinear quad element.
+// NewElement2D creates a new 2D bilinear quad element.
 // (x1[0],x1[1]);(x2[0],x2[1]);... must specify coordinates for the
-// corners running counter-clockwise around the element.
-func NewElemQuad4(x1, x2, x3, x4 []float64) *ElemQuad4 {
-	n1 := &Node{X: x1, U: 1.0, W: 1.0, ShapeFunc: LagrangeND{Order: 1, Index: 0}}
-	n2 := &Node{X: x2, U: 1.0, W: 1.0, ShapeFunc: LagrangeND{Order: 1, Index: 1}}
-	n3 := &Node{X: x3, U: 1.0, W: 1.0, ShapeFunc: LagrangeND{Order: 1, Index: 3}}
-	n4 := &Node{X: x4, U: 1.0, W: 1.0, ShapeFunc: LagrangeND{Order: 1, Index: 2}}
-	return &ElemQuad4{Nds: []*Node{n1, n2, n3, n4}}
-}
-
-func (e *ElemQuad4) Nodes() []*Node { return e.Nds }
-
-func (e *ElemQuad4) Contains(x []float64) bool {
-	ax, ay := x[0], x[1]
-	tot := 0.0
-	for i := 0; i < len(e.Nds); i++ {
-		bx, by := e.Nds[i].X[0], e.Nds[i].X[1]
-		cx, cy := e.Nds[0].X[0], e.Nds[0].X[1]
-		if i+1 < len(e.Nds) {
-			cx, cy = e.Nds[i+1].X[0], e.Nds[i+1].X[1]
-		}
-		tot += math.Abs(ax*(by-cy) + bx*(cy-ay) + cx*(ay-by))
+// nodes running left to right (increasing x) in rows starting at the bottom and iterating towards
+// the top (increasing y).
+func NewElement2D(order int, points ...[]float64) *Element2D {
+	nodes := make([]*Node, len(points))
+	for i, x := range points {
+		nodes[i] = &Node{X: x, U: 1.0, W: 1.0, ShapeFunc: LagrangeND{Order: order, Index: i}}
 	}
-	area := tot / 2
-	return math.Abs(area-e.Area()) < 1e-6
+	return &Element2D{Nds: nodes, Order: order}
 }
 
-func (e *ElemQuad4) Area() float64 {
-	ax, ay := e.Nds[0].X[0], e.Nds[0].X[1]
-	tot := 0.0
-	for i := 1; i < len(e.Nds); i++ {
-		bx, by := e.Nds[i].X[0], e.Nds[i].X[1]
-		cx, cy := e.Nds[0].X[0], e.Nds[0].X[1]
-		if i+1 < len(e.Nds) {
-			cx, cy = e.Nds[i+1].X[0], e.Nds[i+1].X[1]
-		}
-		tot += ax*(by-cy) + bx*(cy-ay) + cx*(ay-by)
+func (e *Element2D) Nodes() []*Node { return e.Nds }
+
+func (e *Element2D) Contains(x []float64) bool {
+	refxs, err := OptimConverter(e, x)
+	if err != nil {
+		panic(err)
 	}
-	return tot / 2
+
+	const eps = 1e-9
+	for _, refx := range refxs {
+		if refx < -1-eps || 1+eps < refx {
+			return false
+		}
+	}
+	return true
 }
 
-func (e *ElemQuad4) Bounds() (low, up []float64) {
+func (e *Element2D) Bounds() (low, up []float64) {
 	return []float64{e.xmin(), e.ymin()}, []float64{e.xmax(), e.ymax()}
 }
 
-func (e *ElemQuad4) xmin() float64 { return e.min(0, true) }
-func (e *ElemQuad4) xmax() float64 { return e.min(0, false) }
-func (e *ElemQuad4) ymin() float64 { return e.min(1, true) }
-func (e *ElemQuad4) ymax() float64 { return e.min(1, false) }
+func (e *Element2D) xmin() float64 { return e.min(0, true) }
+func (e *Element2D) xmax() float64 { return e.min(0, false) }
+func (e *Element2D) ymin() float64 { return e.min(1, true) }
+func (e *Element2D) ymax() float64 { return e.min(1, false) }
 
-func (e *ElemQuad4) min(coord int, less bool) float64 {
+// TODO: handle cases of higher order elements where this doesn't account for the fact that the
+// curved element edge could extend beyond the extreme node values.
+func (e *Element2D) min(coord int, less bool) float64 {
 	extreme := e.Nds[0].X[coord]
 	for _, n := range e.Nds[1:] {
 		if n.X[coord] < extreme && less || n.X[coord] > extreme && !less {
@@ -340,56 +326,57 @@ func (e *ElemQuad4) min(coord int, less bool) float64 {
 	return extreme
 }
 
-func (e *ElemQuad4) Coord(refx []float64) []float64 {
-	ee, nn := refx[0], refx[1]
-	x1 := e.Nds[0].X[0]
-	x2 := e.Nds[1].X[0]
-	x3 := e.Nds[2].X[0]
-	x4 := e.Nds[3].X[0]
-	y1 := e.Nds[0].X[1]
-	y2 := e.Nds[1].X[1]
-	y3 := e.Nds[2].X[1]
-	y4 := e.Nds[3].X[1]
-
-	x := (1 - ee) * (1 - nn) * x1
-	x += (1 + ee) * (1 - nn) * x2
-	x += (1 + ee) * (1 + nn) * x3
-	x += (1 - ee) * (1 + nn) * x4
-	x /= 4
-
-	y := (1 - ee) * (1 - nn) * y1
-	y += (1 + ee) * (1 - nn) * y2
-	y += (1 + ee) * (1 + nn) * y3
-	y += (1 - ee) * (1 + nn) * y4
-	y /= 4
-	return []float64{x, y}
+func (e *Element2D) Coord(refx []float64) []float64 {
+	const ndim = 2
+	realcoords := make([]float64, ndim)
+	for i := 0; i < ndim; i++ {
+		tot := 0.0
+		for _, n := range e.Nds {
+			tot += n.ShapeFunc.Value(refx) * n.X[i]
+		}
+		realcoords[i] = tot
+	}
+	return realcoords
 }
 
-func (e *ElemQuad4) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
+func (e *Element2D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
 	return e.integrateVol(k, wNode, uNode) + e.integrateBoundary(k, wNode, uNode)
 }
 
-func (e *ElemQuad4) IntegrateForce(k Kernel, wNode int) float64 {
+func (e *Element2D) IntegrateForce(k Kernel, wNode int) float64 {
 	return e.integrateVol(k, wNode, -1) + e.integrateBoundary(k, wNode, -1)
 }
 
-func (e *ElemQuad4) integrateBoundary(k Kernel, wNode, uNode int) float64 {
-	var w, u *Node = e.Nds[wNode], nil
-	fnFactory := func(iFree int, fixedVar float64, n1 int) func(x float64) float64 {
-		n2 := n1 + 1
-		if n2 >= len(e.Nds) {
-			n2 = 0
-		}
-		x1, y1 := e.Nds[n1].X[0], e.Nds[n1].X[1]
-		x2, y2 := e.Nds[n2].X[0], e.Nds[n2].X[1]
-		// determinant of jacobian to convert from ref element integral to
-		// real coord integral
-		jacdet := math.Sqrt(math.Pow(x1-x2, 2)+math.Pow(y1-y2, 2)) / 2
+func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
+	const ndim = 2
+	type minmaxvar bool
+	const minvar minmaxvar = true
+	const maxvar minmaxvar = false
 
-		refxs := []float64{fixedVar, fixedVar}
+	var w, u *Node = e.Nds[wNode], nil
+
+	fnFactory := func(fixedDim int, minmax minmaxvar) func(x float64) float64 {
+		varDim := 0
+		if fixedDim == 0 {
+			varDim = 1
+		}
+
+		refxs := []float64{1, 1}
+		if minmax == minvar {
+			refxs[fixedDim] = -1
+		}
+
 		return func(ref float64) float64 {
-			refxs[iFree] = ref
+			refxs[varDim] = ref
 			xs := e.Coord(refxs)
+
+			jac := e.jacobian(refxs)
+			jacdet := 0.0
+			for i := 0; i < ndim; i++ {
+				v := jac.At(varDim, i)
+				jacdet += v * v
+			}
+			jacdet = math.Sqrt(jacdet)
 
 			gradw := w.WeightDeriv(refxs)
 			e.convertderiv(gradw, refxs)
@@ -405,17 +392,18 @@ func (e *ElemQuad4) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 		}
 	}
 
-	xFree, yFree := 0, 1
-
 	bound := 0.0
-	bound += quad.Fixed(fnFactory(xFree, -1, 0), -1, 1, 2, quad.Legendre{}, 0)
-	bound += quad.Fixed(fnFactory(yFree, 1, 1), -1, 1, 2, quad.Legendre{}, 0)
-	bound += quad.Fixed(fnFactory(xFree, 1, 2), -1, 1, 2, quad.Legendre{}, 0)
-	bound += quad.Fixed(fnFactory(yFree, -1, 3), -1, 1, 2, quad.Legendre{}, 0)
+	nquadpoints := int(math.Ceil((float64(e.Order) + 1) / 2))
+	for d := 0; d < ndim; d++ {
+		// integrate over the face/side corresponding to pinning the variable in each dimension
+		// to its min and max values
+		bound += quad.Fixed(fnFactory(d, minvar), -1, 1, nquadpoints, quad.Legendre{}, 0)
+		bound += quad.Fixed(fnFactory(d, maxvar), -1, 1, nquadpoints, quad.Legendre{}, 0)
+	}
 	return bound
 }
 
-func (e *ElemQuad4) integrateVol(k Kernel, wNode, uNode int) float64 {
+func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
 	outer := func(refx float64) float64 {
 		inner := func(refy float64) float64 {
 			refxs := []float64{refx, refy}
@@ -446,7 +434,7 @@ func (e *ElemQuad4) integrateVol(k Kernel, wNode, uNode int) float64 {
 // convertderiv converts the dN/de and dN/dn (derivatives w.r.t. the reference coordinates) to
 // dN/dx and dN/dy (derivatives w.r.t. the real coordinates).  This is used to convert the GradU
 // and GradW terms to be the correct values when building the stiffness matrix.
-func (e *ElemQuad4) convertderiv(refgradu []float64, refxs []float64) {
+func (e *Element2D) convertderiv(refgradu []float64, refxs []float64) {
 	jac := e.jacobian(refxs)
 
 	var soln mat64.Vector
@@ -455,27 +443,24 @@ func (e *ElemQuad4) convertderiv(refgradu []float64, refxs []float64) {
 	refgradu[1] = soln.At(1, 0)
 }
 
-func (e *ElemQuad4) jacobian(refxs []float64) *mat64.Dense {
-	ee, nn := refxs[0], refxs[1]
-	x1 := e.Nds[0].X[0]
-	x2 := e.Nds[1].X[0]
-	x3 := e.Nds[2].X[0]
-	x4 := e.Nds[3].X[0]
-	y1 := e.Nds[0].X[1]
-	y2 := e.Nds[1].X[1]
-	y3 := e.Nds[2].X[1]
-	y4 := e.Nds[3].X[1]
-
-	dxde := (-(1-nn)*x1 + (1-nn)*x2 + (1+nn)*x3 - (1+nn)*x4) / 4
-	dyde := (-(1-nn)*y1 + (1-nn)*y2 + (1+nn)*y3 - (1+nn)*y4) / 4
-	dxdn := (-(1-ee)*x1 - (1+ee)*x2 + (1+ee)*x3 + (1-ee)*x4) / 4
-	dydn := (-(1-ee)*y1 - (1+ee)*y2 + (1+ee)*y3 + (1-ee)*y4) / 4
-	return mat64.NewDense(2, 2, []float64{dxde, dyde, dxdn, dydn})
+func (e *Element2D) jacobian(refxs []float64) *mat64.Dense {
+	ndim := 2
+	mat := mat64.NewDense(ndim, ndim, nil)
+	for i := 0; i < ndim; i++ {
+		for j := 0; j < ndim; j++ {
+			tot := 0.0
+			for _, n := range e.Nds {
+				tot += n.ShapeFunc.Deriv(refxs)[i] * n.X[j]
+			}
+			mat.Set(i, j, tot)
+		}
+	}
+	return mat
 }
 
 // jacdet computes the determinant of the element's 2D jacobian:
 // J = | dx/de  dy/de |
 //     | dx/dn  dy/dn |
-func (e *ElemQuad4) jacdet(refxs []float64) float64 {
+func (e *Element2D) jacdet(refxs []float64) float64 {
 	return mat64.Det(e.jacobian(refxs))
 }

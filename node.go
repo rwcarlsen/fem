@@ -184,7 +184,7 @@ func (fn LagrangeND) Value(refx []float64) float64 {
 	u := 1.0
 
 	for d, xx := range refx {
-		stride := pow(ndim, d)
+		stride := pow(n, d)
 		xindex := -1 + float64((fn.Index/stride)%n)*2/float64(fn.Order)
 		for i := 0; i < n; i++ {
 			if i != (fn.Index/stride)%n {

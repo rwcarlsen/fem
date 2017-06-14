@@ -112,7 +112,7 @@ func NewMeshSimple1D(nodePos []float64, order int) (*Mesh, error) {
 		for j := 0; j < order+1; j++ {
 			xs[j] = nodePos[i*order+j]
 		}
-		m.AddElement(NewElementSimple1D(xs))
+		m.AddElement(NewElement1D(xs))
 	}
 	return m, nil
 }
@@ -126,16 +126,16 @@ func NewMeshSimple2D(xs, ys []float64) (*Mesh, error) {
 		return nil, fmt.Errorf("simple 2D mesh requires at least two x and two y points")
 	}
 
-	for j, y1 := range ys[:len(ys)-1] {
-		y2 := ys[j+1]
-		for i, x1 := range xs[:len(xs)-1] {
-			x2 := xs[i+1]
+	for i, x1 := range xs[:len(xs)-1] {
+		x2 := xs[i+1]
+		for j, y1 := range ys[:len(ys)-1] {
+			y2 := ys[j+1]
 
 			xx1 := []float64{x1, y1}
 			xx2 := []float64{x2, y1}
-			xx3 := []float64{x2, y2}
-			xx4 := []float64{x1, y2}
-			m.AddElement(NewElemQuad4(xx1, xx2, xx3, xx4))
+			xx3 := []float64{x1, y2}
+			xx4 := []float64{x2, y2}
+			m.AddElement(NewElement2D(1, xx1, xx2, xx3, xx4))
 		}
 	}
 	return m, nil
