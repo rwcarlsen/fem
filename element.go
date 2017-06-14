@@ -144,7 +144,7 @@ func NewElementSimple1D(xs []float64) *Element1D {
 	for i := range xs {
 		order := len(xs) - 1
 		nodepos := []float64{xs[i]}
-		n := &Node{X: nodepos, U: 1.0, W: 1.0, ShapeFunc: Lagrange1D{Index: i, Order: order}}
+		n := &Node{X: nodepos, U: 1.0, W: 1.0, ShapeFunc: LagrangeND{Index: i, Order: order}}
 		e.Nds = append(e.Nds, n)
 	}
 
@@ -283,10 +283,10 @@ type ElemQuad4 struct {
 // (x1[0],x1[1]);(x2[0],x2[1]);... must specify coordinates for the
 // corners running counter-clockwise around the element.
 func NewElemQuad4(x1, x2, x3, x4 []float64) *ElemQuad4 {
-	n1 := &Node{X: x1, U: 1.0, W: 1.0, ShapeFunc: Lagrange2D{Order: 1, Index: 0}}
-	n2 := &Node{X: x2, U: 1.0, W: 1.0, ShapeFunc: Lagrange2D{Order: 1, Index: 1}}
-	n3 := &Node{X: x3, U: 1.0, W: 1.0, ShapeFunc: Lagrange2D{Order: 1, Index: 3}}
-	n4 := &Node{X: x4, U: 1.0, W: 1.0, ShapeFunc: Lagrange2D{Order: 1, Index: 2}}
+	n1 := &Node{X: x1, U: 1.0, W: 1.0, ShapeFunc: LagrangeND{Order: 1, Index: 0}}
+	n2 := &Node{X: x2, U: 1.0, W: 1.0, ShapeFunc: LagrangeND{Order: 1, Index: 1}}
+	n3 := &Node{X: x3, U: 1.0, W: 1.0, ShapeFunc: LagrangeND{Order: 1, Index: 3}}
+	n4 := &Node{X: x4, U: 1.0, W: 1.0, ShapeFunc: LagrangeND{Order: 1, Index: 2}}
 	return &ElemQuad4{Nds: []*Node{n1, n2, n3, n4}}
 }
 
