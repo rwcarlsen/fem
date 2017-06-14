@@ -110,7 +110,7 @@ func TestElement2D_Coord(t *testing.T) {
 		t.Logf("case %v (x1=%v, x2=%v, x3=%v, x4=%v):", i+1, test.x1, test.x2, test.x3, test.x4)
 		for j, refx := range test.RefPoints {
 			want := test.RealPoints[j]
-			if x := e.Coord(refx); x[0] != want[0] || x[1] != want[1] {
+			if x := e.Coord(nil, refx); x[0] != want[0] || x[1] != want[1] {
 				t.Errorf("FAIL point %v (refx=%v) real coords: got %v, want %v", j+1, refx, x, want)
 			} else {
 				t.Logf("     point %v (refx=%v) real coords: got %v", j+1, refx, x)

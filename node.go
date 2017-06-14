@@ -165,33 +165,68 @@ type LagrangeND struct {
 	//    * Right: Index%3==Order
 	Index int
 	Order int
+	Safe  bool
+	// xindices stores pre-computed xindex values in the u *= (xx-x0)/(xindex-x0) shape function terms
+	xindices []float64
+	// currpos caches (fn.Index/stride)%(fn.Order+1) where stride is (fn.Order+1)^dim.
+	currpos []int
+}
+
+var nodecache = map[struct{ order, index int }]*LagrangeND{}
+
+func NewLagrangeND(order, index int) *LagrangeND {
+	key := struct{ order, index int }{order, index}
+	if _, ok := nodecache[key]; !ok {
+		nodecache[key] = &LagrangeND{Index: index, Order: order}
+	}
+	return nodecache[key]
 }
 
 func pow(a, b int) int {
-	if b == 0 {
+	if a == 1 || b == 0 {
 		return 1
 	}
-	return a * pow(a, b-1)
+
+	v := 1
+	for i := 0; i < b; i++ {
+		v *= a
+	}
+	return v
 }
 
-func (fn LagrangeND) Value(refx []float64) float64 {
+func (fn *LagrangeND) Value(refx []float64) float64 {
 	ndim := len(refx)
 	n := fn.Order + 1
-	if fn.Index > pow(n, ndim)-1 {
+	if fn.Safe && fn.Index > pow(n, ndim)-1 {
 		panic("incompatible Index, Order, and dimension")
+	}
+
+	if len(fn.xindices) != ndim {
+		fn.xindices = make([]float64, ndim)
+		fn.currpos = make([]int, ndim)
+		stride := 1
+		for i := range fn.xindices {
+			currpos := (fn.Index / stride) % n
+			fn.currpos[i] = currpos
+			fn.xindices[i] = -1 + 2*float64(currpos)/float64(fn.Order)
+			stride *= n
+		}
 	}
 
 	u := 1.0
 
+	ordermult := 2 / float64(fn.Order)
+	stride := 1
 	for d, xx := range refx {
-		stride := pow(n, d)
-		xindex := -1 + float64((fn.Index/stride)%n)*2/float64(fn.Order)
+		xindex := fn.xindices[d]
+		currpos := fn.currpos[d]
 		for i := 0; i < n; i++ {
-			if i != (fn.Index/stride)%n {
-				x0 := -1 + 2*float64(i)/float64(fn.Order)
+			if i != currpos {
+				x0 := -1 + float64(i)*ordermult
 				u *= (xx - x0) / (xindex - x0)
 			}
 		}
+		stride *= n
 	}
 
 	return u

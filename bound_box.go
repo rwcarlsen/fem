@@ -15,7 +15,7 @@ type Box struct {
 	children []*Box
 }
 
-// NewBox builds an initialized bounding box tree the includes all given
+// NewBox builds an initialized bounding box tree that includes all given
 // elements.  It splits a box into "nsplit^ndim" (ndim is the number of
 // dimensions in the problem (i.e. len(node.X())) child bounding boxes if the
 // number of elements in the box are greater than elemTarget.

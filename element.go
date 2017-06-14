@@ -29,8 +29,8 @@ type Element interface {
 	// Contains returns true if x is inside this element and false otherwise.
 	Contains(x []float64) bool
 	// Coord returns the actual coordinates in the element for the given reference coordinates
-	// (between -1 and 1).
-	Coord(refx []float64) []float64
+	// (between -1 and 1).  If x is not nil, it stores the real coordinates there and returns x.
+	Coord(x, refx []float64) []float64
 }
 
 // Converter represents functions that can generate/provide the (approximate) reference
@@ -45,6 +45,7 @@ type Converter func(e Element, x []float64) (refx []float64, err error)
 // coordinate closest to x will be returned.
 func PermConverter(ndiv int) Converter {
 	return func(e Element, x []float64) ([]float64, error) {
+		realcoords := make([]float64, len(x))
 		if !e.Contains(x) {
 			return nil, fmt.Errorf("cannot convert coordinates - element does not contain X=%v", x)
 		}
@@ -64,7 +65,7 @@ func PermConverter(ndiv int) Converter {
 		best := make([]float64, len(x))
 		bestnorm := math.Inf(1)
 		for _, p := range perms {
-			norm := vecL2Norm(vecSub(x, e.Coord(convert(p))))
+			norm := vecL2Norm(vecSub(x, e.Coord(realcoords, convert(p))))
 			if norm < bestnorm {
 				best = convert(p)
 				bestnorm = norm
@@ -77,9 +78,10 @@ func PermConverter(ndiv int) Converter {
 // OptimConverter performs a local optimization using vanilla algorithms (e.g. gradient descent,
 // , newton, etc.) to find the reference coordinates for x.
 func OptimConverter(e Element, x []float64) ([]float64, error) {
+	realcoords := make([]float64, len(x))
 	p := optimize.Problem{
 		Func: func(trial []float64) float64 {
-			return vecL2Norm(vecSub(x, e.Coord(trial)))
+			return vecL2Norm(vecSub(x, e.Coord(realcoords, trial)))
 		},
 	}
 
@@ -140,7 +142,7 @@ func NewElement1D(xs []float64) *Element1D {
 	for i := range xs {
 		order := len(xs) - 1
 		nodepos := []float64{xs[i]}
-		n := &Node{X: nodepos, U: 1.0, W: 1.0, ShapeFunc: LagrangeND{Index: i, Order: order}}
+		n := &Node{X: nodepos, U: 1.0, W: 1.0, ShapeFunc: NewLagrangeND(order, i)}
 		e.Nds = append(e.Nds, n)
 	}
 
@@ -165,8 +167,12 @@ func (e *Element1D) Contains(x []float64) bool {
 	return e.left() <= xx && xx <= e.right()
 }
 
-func (e *Element1D) Coord(refx []float64) []float64 {
-	return []float64{(e.left()*(1-refx[0]) + e.right()*(1+refx[0])) / 2}
+func (e *Element1D) Coord(x, refx []float64) []float64 {
+	if x == nil {
+		x = make([]float64, 1)
+	}
+	x[0] = (e.left()*(1-refx[0]) + e.right()*(1+refx[0])) / 2
+	return x
 }
 
 func (e *Element1D) left() float64  { return e.Nds[0].X[0] }
@@ -212,7 +218,7 @@ func (e *Element1D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 func (e *Element1D) volQuadFunc(ref float64) float64 {
 	var w, u *Node = e.Nds[e.wNode], nil
 	e.refxs[0] = ref
-	e.pars.X = e.Coord(e.refxs)
+	e.pars.X = e.Coord(e.pars.X, e.refxs)
 	e.pars.W = w.Weight(e.refxs)
 	e.pars.GradW = vecMult(w.WeightDeriv(e.refxs), e.invjacdet)
 
@@ -241,7 +247,7 @@ func (e *Element1D) PrintFunc(w io.Writer, nsamples int) {
 	drefx := 2 / (float64(nsamples) - 1)
 	for i := 0; i < nsamples; i++ {
 		refx := []float64{-1 + float64(i)*drefx}
-		x := e.Coord(refx)[0]
+		x := e.Coord(nil, refx)[0]
 
 		v := Interpolate(e, refx)
 		d := InterpolateDeriv(e, refx)
@@ -258,7 +264,7 @@ func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
 	drefx := 2 / (float64(nsamples) - 1)
 	for i := 0; i < nsamples; i++ {
 		refx := []float64{-1 + float64(i)*drefx}
-		x := e.Coord(refx)[0]
+		x := e.Coord(nil, refx)[0]
 		fmt.Fprintf(w, "%v", x)
 		for _, n := range e.Nds {
 			if x < e.left() || x > e.right() {
@@ -283,7 +289,7 @@ type Element2D struct {
 func NewElement2D(order int, points ...[]float64) *Element2D {
 	nodes := make([]*Node, len(points))
 	for i, x := range points {
-		nodes[i] = &Node{X: x, U: 1.0, W: 1.0, ShapeFunc: LagrangeND{Order: order, Index: i}}
+		nodes[i] = &Node{X: x, U: 1.0, W: 1.0, ShapeFunc: NewLagrangeND(order, i)}
 	}
 	return &Element2D{Nds: nodes, Order: order}
 }
@@ -326,17 +332,20 @@ func (e *Element2D) min(coord int, less bool) float64 {
 	return extreme
 }
 
-func (e *Element2D) Coord(refx []float64) []float64 {
+func (e *Element2D) Coord(x, refx []float64) []float64 {
 	const ndim = 2
-	realcoords := make([]float64, ndim)
+	if x == nil {
+		x = make([]float64, ndim)
+	}
+
 	for i := 0; i < ndim; i++ {
 		tot := 0.0
 		for _, n := range e.Nds {
 			tot += n.ShapeFunc.Value(refx) * n.X[i]
 		}
-		realcoords[i] = tot
+		x[i] = tot
 	}
-	return realcoords
+	return x
 }
 
 func (e *Element2D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
@@ -368,7 +377,7 @@ func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 
 		return func(ref float64) float64 {
 			refxs[varDim] = ref
-			xs := e.Coord(refxs)
+			xs := e.Coord(nil, refxs)
 
 			jac := e.jacobian(refxs)
 			jacdet := 0.0
@@ -407,7 +416,7 @@ func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
 	outer := func(refx float64) float64 {
 		inner := func(refy float64) float64 {
 			refxs := []float64{refx, refy}
-			xs := e.Coord(refxs)
+			xs := e.Coord(nil, refxs)
 
 			// determinant of jacobian to convert from ref element integral to
 			// real coord integral
