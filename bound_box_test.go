@@ -24,7 +24,7 @@ func TestSplitBox(t *testing.T) {
 }
 
 func TestNewBox(t *testing.T) {
-	mesh, _ := NewMeshSimple1D([]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, 2)
+	mesh, _ := NewMeshSimple1D(2, []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
 	elemTarget := 3
 	nsplit := 2
 	b := NewBox(mesh.Elems, elemTarget, nsplit)

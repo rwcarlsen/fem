@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"os"
 	"os/exec"
 	"runtime/pprof"
@@ -16,7 +15,7 @@ import (
 )
 
 var printmats = flag.Bool("print", false, "print stiffness and force matrices")
-var nnodes = flag.Int("nodes", 5, "number of nodes/domain divisions-1")
+var ndivs = flag.Int("ndivs", 5, "number of divisions per dimension in the structured mesh")
 var order = flag.Int("order", 2, "lagrange shape function order")
 var iter = flag.Int("iter", 1000, "number of iterations for solve (default=direct)")
 var usertol = flag.Float64("tol", 1e-5, "l2 norm consecutive iterative soln diff threshold")
@@ -53,8 +52,8 @@ func check(err error) {
 
 func TestHeatKernel() {
 	xs := []float64{}
-	for i := 0; i < *nnodes; i++ {
-		xs = append(xs, float64(i)/float64(*nnodes-1)*4)
+	for i := 0; i < *ndivs; i++ {
+		xs = append(xs, float64(i)/float64(*ndivs-1)*4)
 	}
 	hc := &HeatConduction{
 		K: ConstVal(2),  // W/(m*C)
@@ -68,7 +67,7 @@ func TestHeatKernel() {
 			RightType: Neumann,
 		},
 	}
-	mesh, err := NewMeshSimple1D(xs, *order)
+	mesh, err := NewMeshSimple1D(*order, xs)
 	check(err)
 
 	solveProb(mesh, hc)
@@ -90,12 +89,11 @@ func TestHeatKernel2D() {
 	// build mesh
 	xs := []float64{}
 	ys := []float64{}
-	nacross := int(math.Sqrt(float64(*nnodes)))
-	for i := 0; i < nacross; i++ {
-		xs = append(xs, float64(i)/float64(nacross-1)*4)
-		ys = append(ys, float64(i)/float64(nacross-1)*4)
+	for i := 0; i < *ndivs; i++ {
+		xs = append(xs, float64(i)/float64(*ndivs-1)*4)
+		ys = append(ys, float64(i)/float64(*ndivs-1)*4)
 	}
-	mesh, err := NewMeshSimple2D(xs, ys)
+	mesh, err := NewMeshSimple2D(*order, xs, ys)
 	check(err)
 
 	// build kernel and boundary conditions

@@ -55,7 +55,7 @@ func TestMeshSolve(t *testing.T) {
 
 	for i, test := range tests {
 		t.Logf("test %v:", i+1)
-		mesh, err := NewMeshSimple1D(test.Xs, test.Order)
+		mesh, err := NewMeshSimple1D(test.Order, test.Xs)
 		if err != nil {
 			t.Errorf("    FAIL: %v", err)
 		}

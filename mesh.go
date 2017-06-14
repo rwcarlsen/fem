@@ -100,10 +100,10 @@ func (m *Mesh) AddElement(e Element) error {
 // NewMeshSimple1D creates a simply-connected mesh with nodes at the specified
 // points and order specifies the polynomial shape function order used in each element to
 // approximate the solution.
-func NewMeshSimple1D(nodePos []float64, order int) (*Mesh, error) {
+func NewMeshSimple1D(order int, nodePos []float64) (*Mesh, error) {
 	m := &Mesh{Bandwidth: order}
 	if (len(nodePos)-1)%order != 0 {
-		return nil, fmt.Errorf("incompatible mesh order (%v) and node count (%v)", order, len(nodePos))
+		return nil, fmt.Errorf("incompatible mesh order (%v) and dim division count (%v)", order, len(nodePos))
 	}
 
 	nElems := (len(nodePos) - 1) / order
@@ -120,22 +120,27 @@ func NewMeshSimple1D(nodePos []float64, order int) (*Mesh, error) {
 // NewMeshSimple2D creates a structured mesh with Quad4 (bilinear quadrangles) elements covering
 // the grid of points specified by y-axis-parallel lines drawn through each x in xs and
 // x-axis-parallel points drawn through each y in ys.
-func NewMeshSimple2D(xs, ys []float64) (*Mesh, error) {
+func NewMeshSimple2D(order int, xs, ys []float64) (*Mesh, error) {
 	m := &Mesh{}
-	if len(xs) < 1 || len(ys) < 1 {
+	if (len(xs)-1)%order != 0 || (len(ys)-1)%order != 0 {
+		return nil, fmt.Errorf("incompatible mesh order (%v) and dim division count (nx=%v,ny=%v)", order, len(xs), len(ys))
+	} else if len(xs) < 2 || len(ys) < 2 {
 		return nil, fmt.Errorf("simple 2D mesh requires at least two x and two y points")
 	}
 
-	for i, x1 := range xs[:len(xs)-1] {
-		x2 := xs[i+1]
-		for j, y1 := range ys[:len(ys)-1] {
-			y2 := ys[j+1]
+	n := order + 1
 
-			xx1 := []float64{x1, y1}
-			xx2 := []float64{x2, y1}
-			xx3 := []float64{x1, y2}
-			xx4 := []float64{x2, y2}
-			m.AddElement(NewElement2D(1, xx1, xx2, xx3, xx4))
+	xDivs := (len(xs) - 1) / order
+	yDivs := (len(ys) - 1) / order
+	for i := 0; i < xDivs; i++ {
+		for j := 0; j < yDivs; j++ {
+			points := make([][]float64, 0, n*n)
+			for yoffset := 0; yoffset < n; yoffset++ {
+				for xoffset := 0; xoffset < n; xoffset++ {
+					points = append(points, []float64{xs[i*order+xoffset], ys[j*order+yoffset]})
+				}
+			}
+			m.AddElement(NewElement2D(order, points...))
 		}
 	}
 	return m, nil
@@ -222,7 +227,7 @@ func (m *Mesh) Solve(k Kernel) error {
 		}
 	}
 
-	// solve system
+	// solve symmetric system
 	x, err := solver.Solve(AA, bb)
 	if err != nil {
 		return err
