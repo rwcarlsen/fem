@@ -137,7 +137,7 @@ func printSolution(w io.Writer, mesh *Mesh, min, max []float64) {
 	n := len(min)
 	dims := make([]int, n)
 	for i := range dims {
-		dims[i] = *nsoln
+		dims[i] = *nsoln + 1
 	}
 
 	perms := Permute(nil, dims...)
