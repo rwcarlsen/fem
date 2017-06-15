@@ -90,24 +90,32 @@ func (c *Cholesky) Solve(b []float64) (x []float64, err error) {
 	// Solve Ly = b via forward substitution
 	y := make([]float64, len(b))
 	for i := 0; i < len(b); i++ {
-		nonzeros := c.L.NonzeroCols(i)
+		nonzeros := c.L.SweepRow(i)
 		tot := 0.0
-		for j, val := range nonzeros {
-			tot += y[j] * val
+		div := 0.0
+		for _, nonzero := range nonzeros {
+			if nonzero.I == i {
+				div = nonzero.Val
+			}
+			tot += y[nonzero.I] * nonzero.Val
 		}
-		y[i] = (b[i] - tot) / nonzeros[i]
+		y[i] = (b[i] - tot) / div
 	}
 
 	// Solve Ux = y via backward substitution
 	x = make([]float64, len(b))
 	for i := len(b) - 1; i >= 0; i-- {
-		// this inversion (NonzeroRows instead of NonzeroCols simulates the L->U transpose)
-		nonzeros := c.L.NonzeroRows(i)
+		// this inversion (SweepCol instead of SweepRow simulates the L->U transpose)
+		nonzeros := c.L.SweepCol(i)
 		tot := 0.0
-		for j, val := range nonzeros {
-			tot += x[j] * val
+		div := 0.0
+		for _, nonzero := range nonzeros {
+			if nonzero.I == i {
+				div = nonzero.Val
+			}
+			tot += x[nonzero.I] * nonzero.Val
 		}
-		x[i] = (y[i] - tot) / nonzeros[i]
+		x[i] = (y[i] - tot) / div
 	}
 	return x, nil
 }

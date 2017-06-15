@@ -40,6 +40,16 @@ type Matrix interface {
 	NonzeroRows(col int) (rows map[int]float64)
 	NonzeroCols(row int) (cols map[int]float64)
 	T() mat64.Matrix
+	// Index should be called after any mutations to the nonzeros before using the Sweep[Row/Col]
+	// methods.
+	Index()
+	SweepRow(r int) []Nonzero
+	SweepCol(c int) []Nonzero
+}
+
+type Nonzero struct {
+	I   int
+	Val float64
 }
 
 type Sparse struct {
@@ -49,8 +59,10 @@ type Sparse struct {
 	// map[col]map[row]val
 	nonzeroRow []map[int]float64
 	// map[row]map[col]val
-	nonzeroCol []map[int]float64
-	size       int
+	nonzeroCol     []map[int]float64
+	size           int
+	nonzeroRowList [][]Nonzero
+	nonzeroColList [][]Nonzero
 }
 
 // NewSparse creates a new square [size]x[size] sparse matrix representation with a default
@@ -62,6 +74,35 @@ func NewSparse(size int) *Sparse {
 		nonzeroCol: make([]map[int]float64, size),
 		size:       size,
 	}
+}
+
+func (m *Sparse) Index() {
+	if m.nonzeroRowList == nil {
+		m.nonzeroRowList = make([][]Nonzero, m.size)
+		m.nonzeroColList = make([][]Nonzero, m.size)
+	}
+	for i := range m.nonzeroRowList {
+		m.nonzeroRowList[i] = m.nonzeroRowList[i][:0]
+		m.nonzeroColList[i] = m.nonzeroColList[i][:0]
+	}
+	for c, rows := range m.nonzeroRow {
+		for r, val := range rows {
+			m.nonzeroRowList[c] = append(m.nonzeroRowList[c], Nonzero{I: r, Val: val})
+			m.nonzeroColList[r] = append(m.nonzeroColList[r], Nonzero{I: c, Val: val})
+		}
+	}
+}
+func (m *Sparse) SweepRow(r int) []Nonzero {
+	if m.nonzeroRowList == nil {
+		m.Index()
+	}
+	return m.nonzeroColList[r]
+}
+func (m *Sparse) SweepCol(c int) []Nonzero {
+	if m.nonzeroRowList == nil {
+		m.Index()
+	}
+	return m.nonzeroRowList[c]
 }
 
 func Copy(dst, src Matrix) {
@@ -110,8 +151,8 @@ func Mul(m Matrix, b []float64) []float64 {
 	result := make([]float64, len(b))
 	for i := 0; i < size; i++ {
 		tot := 0.0
-		for j, val := range m.NonzeroCols(i) {
-			tot += b[j] * val
+		for _, nonzero := range m.SweepRow(i) {
+			tot += b[nonzero.I] * nonzero.Val
 		}
 		result[i] = tot
 	}
