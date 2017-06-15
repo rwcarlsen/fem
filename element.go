@@ -110,9 +110,9 @@ func Interpolate(e Element, refx []float64) float64 {
 // [-1,1]) for each dimension - i.e. the superposition of partial derivatives from each of the
 // element nodes.
 func InterpolateDeriv(e Element, refx []float64) []float64 {
-	u := e.Nodes()[0].ValueDeriv(refx)
+	u := e.Nodes()[0].ValueDeriv(refx, nil)
 	for _, n := range e.Nodes()[1:] {
-		subu := n.ValueDeriv(refx)
+		subu := n.ValueDeriv(refx, nil)
 		for i := range subu {
 			u[i] += subu[i]
 		}
@@ -200,20 +200,20 @@ func (e *Element1D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 
 	e.pars.X[0] = e.left()
 	e.pars.W = w.Weight(refLeft)
-	e.pars.GradW = vecMult(w.WeightDeriv(refLeft), e.invjacdet)
+	e.pars.GradW = vecMult(w.WeightDeriv(refLeft, nil), e.invjacdet)
 	e.pars2.X[0] = e.right()
 	e.pars2.W = w.Weight(refRight)
-	e.pars2.GradW = vecMult(w.WeightDeriv(refRight), e.invjacdet)
+	e.pars2.GradW = vecMult(w.WeightDeriv(refRight, nil), e.invjacdet)
 
 	if uNode < 0 {
 		return k.BoundaryInt(e.pars) + k.BoundaryInt(e.pars2)
 	}
 	u = e.Nds[uNode]
 	e.pars.U = u.Value(refLeft)
-	e.pars.GradU = vecMult(u.ValueDeriv(refLeft), e.invjacdet)
+	e.pars.GradU = vecMult(u.ValueDeriv(refLeft, nil), e.invjacdet)
 
 	e.pars2.U = u.Value(refRight)
-	e.pars2.GradU = vecMult(u.ValueDeriv(refRight), e.invjacdet)
+	e.pars2.GradU = vecMult(u.ValueDeriv(refRight, nil), e.invjacdet)
 	return k.BoundaryIntU(e.pars) + k.BoundaryIntU(e.pars2)
 }
 
@@ -222,14 +222,14 @@ func (e *Element1D) volQuadFunc(ref float64) float64 {
 	e.refxs[0] = ref
 	e.pars.X = e.Coord(e.pars.X, e.refxs)
 	e.pars.W = w.Weight(e.refxs)
-	e.pars.GradW = vecMult(w.WeightDeriv(e.refxs), e.invjacdet)
+	e.pars.GradW = vecMult(w.WeightDeriv(e.refxs, nil), e.invjacdet)
 
 	if e.uNode < 0 {
 		return e.kern.VolInt(e.pars)
 	}
 	u = e.Nds[e.uNode]
 	e.pars.U = u.Value(e.refxs)
-	e.pars.GradU = vecMult(u.ValueDeriv(e.refxs), e.invjacdet)
+	e.pars.GradU = vecMult(u.ValueDeriv(e.refxs, nil), e.invjacdet)
 	return e.kern.VolIntU(e.pars)
 }
 
@@ -272,7 +272,7 @@ func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
 			if x < e.left() || x > e.right() {
 				fmt.Fprintf(w, "\t0\t0")
 			} else {
-				fmt.Fprintf(w, "\t%v\t%v", n.Value(refx), n.ValueDeriv(refx)[0])
+				fmt.Fprintf(w, "\t%v\t%v", n.Value(refx), n.ValueDeriv(refx, nil)[0])
 			}
 		}
 		fmt.Fprintf(w, "\n")
@@ -291,11 +291,16 @@ type Element2D struct {
 // nodes running left to right (increasing x) in rows starting at the bottom and iterating towards
 // the top (increasing y).
 func NewElement2D(order int, points ...[]float64) *Element2D {
+	const ndim = 2
 	nodes := make([]*Node, len(points))
 	for i, x := range points {
 		nodes[i] = &Node{X: x, U: 1.0, W: 1.0, ShapeFunc: NewLagrangeND(order, i)}
 	}
-	return &Element2D{Nds: nodes, Order: order, tmpXs: make([][]float64, len(nodes)), tmpDerivs: make([][]float64, len(nodes))}
+	tmpderivs := make([][]float64, len(nodes))
+	for i := range tmpderivs {
+		tmpderivs[i] = make([]float64, ndim)
+	}
+	return &Element2D{Nds: nodes, Order: order, tmpXs: make([][]float64, len(nodes)), tmpDerivs: tmpderivs}
 }
 
 func (e *Element2D) Nodes() []*Node { return e.Nds }
@@ -391,7 +396,7 @@ func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 			}
 			jacdet = math.Sqrt(jacdet)
 
-			gradw := w.WeightDeriv(refxs)
+			gradw := w.WeightDeriv(refxs, nil)
 			e.convertderiv(gradw, refxs)
 			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: gradw}
 			if uNode < 0 {
@@ -399,7 +404,7 @@ func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 			}
 			u = e.Nds[uNode]
 			pars.U = u.Value(refxs)
-			pars.GradU = u.ValueDeriv(refxs)
+			pars.GradU = u.ValueDeriv(refxs, nil)
 			e.convertderiv(pars.GradU, refxs)
 			return k.BoundaryIntU(pars) * jacdet
 		}
@@ -427,7 +432,7 @@ func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
 			jacdet := e.jacdet(refxs)
 
 			var w, u *Node = e.Nds[wNode], nil
-			gradw := w.WeightDeriv(refxs)
+			gradw := w.WeightDeriv(refxs, nil)
 			e.convertderiv(gradw, refxs)
 			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: gradw}
 			if uNode < 0 {
@@ -435,7 +440,7 @@ func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
 			}
 			u = e.Nds[uNode]
 			pars.U = u.Value(refxs)
-			pars.GradU = u.ValueDeriv(refxs)
+			pars.GradU = u.ValueDeriv(refxs, nil)
 			e.convertderiv(pars.GradU, refxs)
 			return jacdet * k.VolIntU(pars)
 		}
@@ -461,15 +466,15 @@ func (e *Element2D) jacobian(refxs []float64) *mat64.Dense {
 	mat := mat64.NewDense(ndim, ndim, nil)
 
 	for i, n := range e.Nds {
-		e.tmpDerivs[i] = n.ShapeFunc.Deriv(refxs)
+		n.ShapeFunc.Deriv(refxs, e.tmpDerivs[i])
 		e.tmpXs[i] = n.X
 	}
 
 	for i := 0; i < ndim; i++ {
 		for j := 0; j < ndim; j++ {
 			tot := 0.0
-			for ni := range e.Nds {
-				tot += e.tmpDerivs[ni][i] * e.tmpXs[ni][j]
+			for n := range e.Nds {
+				tot += e.tmpDerivs[n][i] * e.tmpXs[n][j]
 			}
 			mat.Set(i, j, tot)
 		}

@@ -20,15 +20,23 @@ func (n *Node) Value(refx []float64) float64 {
 	return n.ShapeFunc.Value(refx) * n.U
 }
 func (n *Node) Weight(refx []float64) float64 { return n.ShapeFunc.Value(refx) * n.W }
-func (n *Node) ValueDeriv(refx []float64) []float64 {
-	d := n.ShapeFunc.Deriv(refx)
+
+// ValueDeriv returns the partial derivatives (i.e. gradient) contribution to the solution of the
+// node at the given reference coordinates.  If deriv is not nil the result is stored in it and
+// deriv is returned - otherwise a new slice is allocated.
+func (n *Node) ValueDeriv(refx, deriv []float64) []float64 {
+	d := n.ShapeFunc.Deriv(refx, deriv)
 	for i := range d {
 		d[i] *= n.U
 	}
 	return d
 }
-func (n *Node) WeightDeriv(refx []float64) []float64 {
-	d := n.ShapeFunc.Deriv(refx)
+
+// WeightDeriv returns the partial derivatives (i.e. gradient) contribution to the weight function
+// of the node at the given reference coordinates.  If deriv is not nil the result is stored in it
+// and deriv is returned - otherwise a new slice is allocated.
+func (n *Node) WeightDeriv(refx, deriv []float64) []float64 {
+	d := n.ShapeFunc.Deriv(refx, deriv)
 	for i := range d {
 		d[i] *= n.W
 	}
@@ -37,7 +45,10 @@ func (n *Node) WeightDeriv(refx []float64) []float64 {
 
 type ShapeFunc interface {
 	Value(refx []float64) float64
-	Deriv(refx []float64) []float64
+	// Deriv calculates and returns the partial derivatives at the given reference coordinates for
+	// each dimension.  If deriv is not nil, the resuts are stored in it and deriv is returned -
+	// otherwise a new slice is allocated and returned.
+	Deriv(refx, deriv []float64) []float64
 }
 
 type Lagrange1D struct {
@@ -61,7 +72,11 @@ func (fn Lagrange1D) Value(refx []float64) float64 {
 	return u
 }
 
-func (fn Lagrange1D) Deriv(refx []float64) []float64 {
+func (fn Lagrange1D) Deriv(refx, deriv []float64) []float64 {
+	if deriv == nil {
+		deriv = make([]float64, 1)
+	}
+
 	xx, u := refx[0], 1.0
 	dudx := 0.0
 	xindex := -1 + float64(fn.Index)*2/float64(fn.Order)
@@ -73,7 +88,8 @@ func (fn Lagrange1D) Deriv(refx []float64) []float64 {
 		dudx = 1/(xindex-x0)*u + (xx-x0)/(xindex-x0)*dudx
 		u *= (xx - x0) / (xindex - x0)
 	}
-	return []float64{dudx}
+	deriv[0] = dudx
+	return deriv
 }
 
 type Lagrange2D struct {
@@ -115,10 +131,14 @@ func (fn Lagrange2D) Value(refx []float64) float64 {
 	return u
 }
 
-func (fn Lagrange2D) Deriv(refx []float64) []float64 {
+func (fn Lagrange2D) Deriv(refx, deriv []float64) []float64 {
 	n := fn.Order + 1
 	if fn.Index > n*n-1 {
 		panic("incompatible Index and Order")
+	}
+
+	if deriv == nil {
+		deriv = make([]float64, 2)
 	}
 
 	xx, yy := refx[0], refx[1]
@@ -149,7 +169,9 @@ func (fn Lagrange2D) Deriv(refx []float64) []float64 {
 		u *= ux * uy
 	}
 
-	return []float64{dudx, dudy}
+	deriv[0] = dudx
+	deriv[1] = dudy
+	return deriv
 }
 
 type LagrangeND struct {
@@ -170,8 +192,6 @@ type LagrangeND struct {
 	xindices []float64
 	// currpos caches (fn.Index/stride)%(fn.Order+1) where stride is (fn.Order+1)^dim.
 	currpos []int
-	// deriv caches memory used for serving (partial) derivatives
-	deriv []float64
 	// upart caches memory used for calculating (partial) derivaties
 	upart []float64
 }
@@ -203,7 +223,6 @@ func (fn *LagrangeND) init(ndim int) {
 		n := fn.Order + 1
 		fn.xindices = make([]float64, ndim)
 		fn.currpos = make([]int, ndim)
-		fn.deriv = make([]float64, ndim)
 		fn.upart = make([]float64, ndim)
 		stride := 1
 		for i := range fn.xindices {
@@ -240,15 +259,20 @@ func (fn *LagrangeND) Value(refx []float64) float64 {
 	return u
 }
 
-func (fn LagrangeND) Deriv(refx []float64) []float64 {
+func (fn LagrangeND) Deriv(refx, deriv []float64) []float64 {
 	ndim := len(refx)
 	n := fn.Order + 1
 	if fn.Index > pow(n, ndim)-1 {
 		panic("incompatible Index, Order, and dimension")
 	}
 	fn.init(ndim)
-	for i := range fn.deriv { // zero out memory for storing new derivative calcs
-		fn.deriv[i] = 0
+
+	if deriv == nil {
+		deriv = make([]float64, ndim)
+	} else {
+		for i := range deriv {
+			deriv[i] = 0
+		}
 	}
 
 	u := 1.0
@@ -262,22 +286,22 @@ func (fn LagrangeND) Deriv(refx []float64) []float64 {
 				a := 1 / (xindex - x0)
 				term := xx - x0
 				fn.upart[d] = a * term
-				// 1/(xindex-x0)*u + (xx-x0)/(xindex-x0)*fn.deriv[d]
-				fn.deriv[d] = a * (u + term*fn.deriv[d])
+				// compute 1/(xindex-x0)*u + (xx-x0)/(xindex-x0)*deriv[d]:
+				deriv[d] = a * (u + term*deriv[d])
 			} else {
 				fn.upart[d] = 1.0
 			}
 		}
 
-		for d := range fn.deriv {
+		for d := range deriv {
 			u *= fn.upart[d]
 			for i, ux := range fn.upart {
 				if d != i {
-					fn.deriv[d] *= ux
+					deriv[d] *= ux
 				}
 			}
 		}
 	}
 
-	return fn.deriv
+	return deriv
 }

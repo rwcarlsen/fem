@@ -84,7 +84,7 @@ func TestLagrange1D_Deriv(t *testing.T) {
 
 	for i, test := range tests {
 		fn := Lagrange1D{test.Index, test.Order}
-		y := fn.Deriv([]float64{test.SampleX})[0]
+		y := fn.Deriv([]float64{test.SampleX}, nil)[0]
 		if y != test.Want {
 			t.Errorf("FAIL case %v (order=%v, index=%v): df/dx(%v)=%v, want %v", i+1, test.Order, test.Index, test.SampleX, y, test.Want)
 		} else {
@@ -218,7 +218,7 @@ func TestLagrange2D_Deriv(t *testing.T) {
 
 	for i, test := range tests {
 		n := Lagrange2D{Order: test.Order, Index: test.Index}
-		d := n.Deriv(test.SampleX)
+		d := n.Deriv(test.SampleX, nil)
 		dx, dy := d[0], d[1]
 		if dx != test.Want[0] || dy != test.Want[1] {
 			t.Errorf("    FAIL case %2v (order %v, index %v): f(%2v) = %5v, want %5v", i+1, test.Order, test.Index, test.SampleX, d, test.Want)
@@ -394,7 +394,7 @@ func TestLagrangeND_Deriv(t *testing.T) {
 
 	for i, test := range tests {
 		n := LagrangeND{Order: test.Order, Index: test.Index}
-		d := n.Deriv(test.SampleX)
+		d := n.Deriv(test.SampleX, nil)
 		dx, dy := d[0], d[1]
 		if dx != test.Want[0] || dy != test.Want[1] {
 			t.Errorf("    FAIL case %2v (order %v, index %v): f(%2v) = %5v, want %5v", i+1, test.Order, test.Index, test.SampleX, d, test.Want)

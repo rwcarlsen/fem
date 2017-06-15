@@ -135,7 +135,7 @@ func (k testKernel) BoundaryIntU(p *KernelParams) float64     { return float64(k
 func (k testKernel) BoundaryInt(p *KernelParams) float64      { return float64(k) * p.U }
 func (k testKernel) IsDirichlet(xs []float64) (bool, float64) { return false, 0 }
 
-func TestElemend2D_IntegrateBoundary(t *testing.T) {
+func TestElement2D_IntegrateBoundary(t *testing.T) {
 	const volume = 1
 	const boundary = 2
 	tests := []struct {
