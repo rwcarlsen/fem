@@ -284,6 +284,7 @@ type Element2D struct {
 	Order     int
 	tmpXs     [][]float64
 	tmpDerivs [][]float64
+	tmpMat    *mat64.Dense
 }
 
 // NewElement2D creates a new 2D bilinear quad element.
@@ -397,7 +398,7 @@ func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 			jacdet = math.Sqrt(jacdet)
 
 			gradw := w.WeightDeriv(refxs, nil)
-			e.convertderiv(gradw, refxs)
+			e.convertderiv(jac, gradw, refxs)
 			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: gradw}
 			if uNode < 0 {
 				return k.BoundaryInt(pars) * jacdet
@@ -405,7 +406,7 @@ func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 			u = e.Nds[uNode]
 			pars.U = u.Value(refxs)
 			pars.GradU = u.ValueDeriv(refxs, nil)
-			e.convertderiv(pars.GradU, refxs)
+			e.convertderiv(jac, pars.GradU, refxs)
 			return k.BoundaryIntU(pars) * jacdet
 		}
 	}
@@ -427,13 +428,16 @@ func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
 			refxs := []float64{refx, refy}
 			xs := e.Coord(nil, refxs)
 
+			jac := e.jacobian(refxs)
 			// determinant of jacobian to convert from ref element integral to
-			// real coord integral
-			jacdet := e.jacdet(refxs)
+			// real coord integral:
+			//     J = | dx/de  dy/de |
+			//         | dx/dn  dy/dn |
+			jacdet := det2x2(jac)
 
 			var w, u *Node = e.Nds[wNode], nil
 			gradw := w.WeightDeriv(refxs, nil)
-			e.convertderiv(gradw, refxs)
+			e.convertderiv(jac, gradw, refxs)
 			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: gradw}
 			if uNode < 0 {
 				return jacdet * k.VolInt(pars)
@@ -441,7 +445,7 @@ func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
 			u = e.Nds[uNode]
 			pars.U = u.Value(refxs)
 			pars.GradU = u.ValueDeriv(refxs, nil)
-			e.convertderiv(pars.GradU, refxs)
+			e.convertderiv(jac, pars.GradU, refxs)
 			return jacdet * k.VolIntU(pars)
 		}
 		return quad.Fixed(inner, -1, 1, 2, quad.Legendre{}, 0)
@@ -449,21 +453,44 @@ func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
 	return quad.Fixed(outer, -1, 1, 2, quad.Legendre{}, 0)
 }
 
+func det2x2(m *mat64.Dense) float64 {
+	a := m.At(0, 0)
+	b := m.At(0, 1)
+	c := m.At(1, 0)
+	d := m.At(1, 1)
+	return (a*d - b*c)
+}
+
 // convertderiv converts the dN/de and dN/dn (derivatives w.r.t. the reference coordinates) to
 // dN/dx and dN/dy (derivatives w.r.t. the real coordinates).  This is used to convert the GradU
 // and GradW terms to be the correct values when building the stiffness matrix.
-func (e *Element2D) convertderiv(refgradu []float64, refxs []float64) {
-	jac := e.jacobian(refxs)
-
-	var soln mat64.Vector
-	soln.SolveVec(jac, mat64.NewVector(2, refgradu))
-	refgradu[0] = soln.At(0, 0)
-	refgradu[1] = soln.At(1, 0)
+func (e *Element2D) convertderiv(jac *mat64.Dense, refgradu []float64, refxs []float64) {
+	const ndim = 2
+	if ndim == 2 {
+		a := jac.At(0, 0)
+		b := jac.At(0, 1)
+		c := jac.At(1, 0)
+		d := jac.At(1, 1)
+		invdet := 1 / (a*d - b*c)
+		s1 := invdet * (d*refgradu[0] - b*refgradu[1])
+		s2 := invdet * (-c*refgradu[0] + a*refgradu[1])
+		refgradu[0] = s1
+		refgradu[1] = s2
+	} else {
+		// this branch (although never taken) exists to show the way to generalize for arbitrary
+		// dimensions
+		var soln mat64.Vector
+		soln.SolveVec(jac, mat64.NewVector(2, refgradu))
+		refgradu[0] = soln.At(0, 0)
+		refgradu[1] = soln.At(1, 0)
+	}
 }
 
 func (e *Element2D) jacobian(refxs []float64) *mat64.Dense {
 	const ndim = 2
-	mat := mat64.NewDense(ndim, ndim, nil)
+	if e.tmpMat == nil {
+		e.tmpMat = mat64.NewDense(ndim, ndim, nil)
+	}
 
 	for i, n := range e.Nds {
 		n.ShapeFunc.Deriv(refxs, e.tmpDerivs[i])
@@ -476,15 +503,8 @@ func (e *Element2D) jacobian(refxs []float64) *mat64.Dense {
 			for n := range e.Nds {
 				tot += e.tmpDerivs[n][i] * e.tmpXs[n][j]
 			}
-			mat.Set(i, j, tot)
+			e.tmpMat.Set(i, j, tot)
 		}
 	}
-	return mat
-}
-
-// jacdet computes the determinant of the element's 2D jacobian:
-// J = | dx/de  dy/de |
-//     | dx/dn  dy/dn |
-func (e *Element2D) jacdet(refxs []float64) float64 {
-	return mat64.Det(e.jacobian(refxs))
+	return e.tmpMat
 }
