@@ -170,6 +170,10 @@ type LagrangeND struct {
 	xindices []float64
 	// currpos caches (fn.Index/stride)%(fn.Order+1) where stride is (fn.Order+1)^dim.
 	currpos []int
+	// deriv caches memory used for serving (partial) derivatives
+	deriv []float64
+	// upart caches memory used for calculating (partial) derivaties
+	upart []float64
 }
 
 var nodecache = map[struct{ order, index int }]*LagrangeND{}
@@ -194,16 +198,13 @@ func pow(a, b int) int {
 	return v
 }
 
-func (fn *LagrangeND) Value(refx []float64) float64 {
-	ndim := len(refx)
-	n := fn.Order + 1
-	if fn.Safe && fn.Index > pow(n, ndim)-1 {
-		panic("incompatible Index, Order, and dimension")
-	}
-
+func (fn *LagrangeND) init(ndim int) {
 	if len(fn.xindices) != ndim {
+		n := fn.Order + 1
 		fn.xindices = make([]float64, ndim)
 		fn.currpos = make([]int, ndim)
+		fn.deriv = make([]float64, ndim)
+		fn.upart = make([]float64, ndim)
 		stride := 1
 		for i := range fn.xindices {
 			currpos := (fn.Index / stride) % n
@@ -212,11 +213,19 @@ func (fn *LagrangeND) Value(refx []float64) float64 {
 			stride *= n
 		}
 	}
+}
+
+func (fn *LagrangeND) Value(refx []float64) float64 {
+	ndim := len(refx)
+	n := fn.Order + 1
+	if fn.Safe && fn.Index > pow(n, ndim)-1 {
+		panic("incompatible Index, Order, and dimension")
+	}
+	fn.init(ndim)
 
 	u := 1.0
 
 	ordermult := 2 / float64(fn.Order)
-	stride := 1
 	for d, xx := range refx {
 		xindex := fn.xindices[d]
 		currpos := fn.currpos[d]
@@ -226,7 +235,6 @@ func (fn *LagrangeND) Value(refx []float64) float64 {
 				u *= (xx - x0) / (xindex - x0)
 			}
 		}
-		stride *= n
 	}
 
 	return u
@@ -238,38 +246,38 @@ func (fn LagrangeND) Deriv(refx []float64) []float64 {
 	if fn.Index > pow(n, ndim)-1 {
 		panic("incompatible Index, Order, and dimension")
 	}
-
-	strides := make([]int, ndim)
-	for i := range strides {
-		strides[i] = pow(n, i)
+	fn.init(ndim)
+	for i := range fn.deriv { // zero out memory for storing new derivative calcs
+		fn.deriv[i] = 0
 	}
 
 	u := 1.0
-	deriv := make([]float64, ndim)
-	upart := make([]float64, ndim)
 	for i := 0; i < n; i++ {
 		x0 := -1 + 2*float64(i)/float64(fn.Order)
 		for d, xx := range refx {
-			stride := strides[d]
-			xindex := -1 + 2*float64((fn.Index/stride)%n)/float64(fn.Order)
+			xindex := fn.xindices[d]
+			currpos := fn.currpos[d]
 
-			if i != (fn.Index/stride)%n {
-				upart[d] = (xx - x0) / (xindex - x0)
-				deriv[d] = 1/(xindex-x0)*u + (xx-x0)/(xindex-x0)*deriv[d]
+			if i != currpos {
+				a := 1 / (xindex - x0)
+				term := xx - x0
+				fn.upart[d] = a * term
+				// 1/(xindex-x0)*u + (xx-x0)/(xindex-x0)*fn.deriv[d]
+				fn.deriv[d] = a * (u + term*fn.deriv[d])
 			} else {
-				upart[d] = 1.0
+				fn.upart[d] = 1.0
 			}
 		}
 
-		for d := range deriv {
-			u *= upart[d]
-			for i, ux := range upart {
+		for d := range fn.deriv {
+			u *= fn.upart[d]
+			for i, ux := range fn.upart {
 				if d != i {
-					deriv[d] *= ux
+					fn.deriv[d] *= ux
 				}
 			}
 		}
 	}
 
-	return deriv
+	return fn.deriv
 }

@@ -46,6 +46,7 @@ type Converter func(e Element, x []float64) (refx []float64, err error)
 func PermConverter(ndiv int) Converter {
 	return func(e Element, x []float64) ([]float64, error) {
 		realcoords := make([]float64, len(x))
+		diff := make([]float64, len(x))
 		if !e.Contains(x) {
 			return nil, fmt.Errorf("cannot convert coordinates - element does not contain X=%v", x)
 		}
@@ -65,7 +66,7 @@ func PermConverter(ndiv int) Converter {
 		best := make([]float64, len(x))
 		bestnorm := math.Inf(1)
 		for _, p := range perms {
-			norm := vecL2Norm(vecSub(x, e.Coord(realcoords, convert(p))))
+			norm := vecL2Norm(vecSub(diff, x, e.Coord(realcoords, convert(p))))
 			if norm < bestnorm {
 				best = convert(p)
 				bestnorm = norm
@@ -79,9 +80,10 @@ func PermConverter(ndiv int) Converter {
 // , newton, etc.) to find the reference coordinates for x.
 func OptimConverter(e Element, x []float64) ([]float64, error) {
 	realcoords := make([]float64, len(x))
+	diff := make([]float64, len(x))
 	p := optimize.Problem{
 		Func: func(trial []float64) float64 {
-			return vecL2Norm(vecSub(x, e.Coord(realcoords, trial)))
+			return vecL2Norm(vecSub(diff, x, e.Coord(realcoords, trial)))
 		},
 	}
 
@@ -278,8 +280,10 @@ func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
 }
 
 type Element2D struct {
-	Nds   []*Node
-	Order int
+	Nds       []*Node
+	Order     int
+	tmpXs     [][]float64
+	tmpDerivs [][]float64
 }
 
 // NewElement2D creates a new 2D bilinear quad element.
@@ -291,7 +295,7 @@ func NewElement2D(order int, points ...[]float64) *Element2D {
 	for i, x := range points {
 		nodes[i] = &Node{X: x, U: 1.0, W: 1.0, ShapeFunc: NewLagrangeND(order, i)}
 	}
-	return &Element2D{Nds: nodes, Order: order}
+	return &Element2D{Nds: nodes, Order: order, tmpXs: make([][]float64, len(nodes)), tmpDerivs: make([][]float64, len(nodes))}
 }
 
 func (e *Element2D) Nodes() []*Node { return e.Nds }
@@ -453,13 +457,19 @@ func (e *Element2D) convertderiv(refgradu []float64, refxs []float64) {
 }
 
 func (e *Element2D) jacobian(refxs []float64) *mat64.Dense {
-	ndim := 2
+	const ndim = 2
 	mat := mat64.NewDense(ndim, ndim, nil)
+
+	for i, n := range e.Nds {
+		e.tmpDerivs[i] = n.ShapeFunc.Deriv(refxs)
+		e.tmpXs[i] = n.X
+	}
+
 	for i := 0; i < ndim; i++ {
 		for j := 0; j < ndim; j++ {
 			tot := 0.0
-			for _, n := range e.Nds {
-				tot += n.ShapeFunc.Deriv(refxs)[i] * n.X[j]
+			for ni := range e.Nds {
+				tot += e.tmpDerivs[ni][i] * e.tmpXs[ni][j]
 			}
 			mat.Set(i, j, tot)
 		}

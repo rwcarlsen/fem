@@ -43,7 +43,7 @@ func PosEqual(a, b []float64, tol float64) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	return vecL2Norm(vecSub(a, b)) <= tol
+	return vecL2Norm(vecSub(nil, a, b)) <= tol
 }
 
 // Dot performs a vector*vector dot product.
@@ -66,8 +66,8 @@ func vecProject(p []float64, end1, end2 []float64) []float64 {
 		panic("inconsistent lengths for vector projection")
 	}
 
-	s := vecSub(end2, end1)
-	v := vecSub(p, end1)
+	s := vecSub(nil, end2, end1)
+	v := vecSub(nil, p, end1)
 	vDotS := Dot(v, s)
 	sDotS := Dot(s, s)
 
@@ -75,7 +75,7 @@ func vecProject(p []float64, end1, end2 []float64) []float64 {
 	for i := range s {
 		proj[i] = s[i] * vDotS / sDotS
 	}
-	return vecSub(proj, vecMult(end1, -1)) // add back end1
+	return vecSub(nil, proj, vecMult(end1, -1)) // add back end1
 }
 
 func vecL2Norm(vec []float64) float64 {
@@ -89,15 +89,17 @@ func vecMult(v []float64, mult float64) []float64 {
 	return v
 }
 
-func vecSub(a, b []float64) []float64 {
+func vecSub(dst, a, b []float64) []float64 {
 	if len(a) != len(b) {
 		panic("inconsistent lengths for vector subtraction")
 	}
-	diff := make([]float64, len(a))
-	for i := range a {
-		diff[i] = a[i] - b[i]
+	if dst == nil {
+		dst = make([]float64, len(a))
 	}
-	return diff
+	for i := range a {
+		dst[i] = a[i] - b[i]
+	}
+	return dst
 }
 
 func Permute(skip func([]int) bool, dimensions ...int) [][]int {

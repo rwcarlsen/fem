@@ -107,7 +107,7 @@ func (b *Boundary2D) loc(x []float64) int {
 		}
 
 		proj := vecProject(x, []float64{x1, y1}, []float64{x2, y2})
-		norm := vecL2Norm(vecSub(proj, x))
+		norm := vecL2Norm(vecSub(nil, proj, x))
 		if norm < b.Tol {
 			return i
 		}
@@ -135,8 +135,8 @@ func (b *Boundary2D) Val(x []float64) float64 {
 		x1, x2 = []float64{b.X[i], b.Y[i]}, []float64{b.X[i+1], b.Y[i+1]}
 		v1, v2 = b.Vals[i], b.Vals[i+1]
 	}
-	length := vecL2Norm(vecSub(x2, x1))
-	dist := vecL2Norm(vecSub(x, x1))
+	length := vecL2Norm(vecSub(nil, x2, x1))
+	dist := vecL2Norm(vecSub(nil, x, x1))
 	frac := dist / length
 	return v1 + frac*(v2-v1)
 }
