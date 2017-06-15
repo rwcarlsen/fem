@@ -24,7 +24,7 @@ type Preconditioner func(z, r []float64)
 // M^(-1)*r, M is the incomplete cholesky factorization.
 func IncompleteCholesky(A Matrix) Preconditioner {
 	size, _ := A.Dims()
-	chol := NewCholesky(RestrictByPattern{NewSparse(size), A}, A)
+	chol := NewCholesky(RestrictByPattern{Matrix: NewSparse(size), Pattern: A}, A)
 
 	return func(z, r []float64) {
 		zz, err := chol.Solve(r)

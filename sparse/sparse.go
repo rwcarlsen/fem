@@ -24,11 +24,16 @@ func (r RestrictByWidth) Set(i, j int, val float64) {
 
 type RestrictByPattern struct {
 	Matrix
-	Pattern Matrix
+	Pattern  Matrix
+	MaxWidth int
 }
 
 func (r RestrictByPattern) Set(i, j int, val float64) {
-	if r.Pattern.At(i, j) != 0 {
+	diff := i - j
+	if diff < 0 {
+		diff *= -1
+	}
+	if r.Pattern.At(i, j) != 0 || diff <= r.MaxWidth {
 		r.Matrix.Set(i, j, val)
 	}
 }

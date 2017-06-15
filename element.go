@@ -280,11 +280,14 @@ func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
 }
 
 type Element2D struct {
-	Nds       []*Node
-	Order     int
+	Nds   []*Node
+	Order int
+	// the following variables cache values for reuse
 	tmpXs     [][]float64
 	tmpDerivs [][]float64
 	tmpMat    *mat64.Dense
+	gradw     []float64
+	gradu     []float64
 }
 
 // NewElement2D creates a new 2D bilinear quad element.
@@ -301,7 +304,14 @@ func NewElement2D(order int, points ...[]float64) *Element2D {
 	for i := range tmpderivs {
 		tmpderivs[i] = make([]float64, ndim)
 	}
-	return &Element2D{Nds: nodes, Order: order, tmpXs: make([][]float64, len(nodes)), tmpDerivs: tmpderivs}
+	return &Element2D{
+		Nds:       nodes,
+		Order:     order,
+		tmpXs:     make([][]float64, len(nodes)),
+		tmpDerivs: tmpderivs,
+		gradw:     make([]float64, ndim),
+		gradu:     make([]float64, ndim),
+	}
 }
 
 func (e *Element2D) Nodes() []*Node { return e.Nds }
@@ -371,7 +381,6 @@ func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	type minmaxvar bool
 	const minvar minmaxvar = true
 	const maxvar minmaxvar = false
-
 	var w, u *Node = e.Nds[wNode], nil
 
 	fnFactory := func(fixedDim int, minmax minmaxvar) func(x float64) float64 {
@@ -397,15 +406,16 @@ func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 			}
 			jacdet = math.Sqrt(jacdet)
 
-			gradw := w.WeightDeriv(refxs, nil)
-			e.convertderiv(jac, gradw, refxs)
-			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: gradw}
+			w.WeightDeriv(refxs, e.gradw)
+			e.convertderiv(jac, e.gradw, refxs)
+			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: e.gradw}
 			if uNode < 0 {
 				return k.BoundaryInt(pars) * jacdet
 			}
 			u = e.Nds[uNode]
 			pars.U = u.Value(refxs)
-			pars.GradU = u.ValueDeriv(refxs, nil)
+			pars.GradU = e.gradu
+			u.ValueDeriv(refxs, pars.GradU)
 			e.convertderiv(jac, pars.GradU, refxs)
 			return k.BoundaryIntU(pars) * jacdet
 		}
@@ -436,15 +446,16 @@ func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
 			jacdet := det2x2(jac)
 
 			var w, u *Node = e.Nds[wNode], nil
-			gradw := w.WeightDeriv(refxs, nil)
-			e.convertderiv(jac, gradw, refxs)
-			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: gradw}
+			w.WeightDeriv(refxs, e.gradw)
+			e.convertderiv(jac, e.gradw, refxs)
+			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: e.gradw}
 			if uNode < 0 {
 				return jacdet * k.VolInt(pars)
 			}
 			u = e.Nds[uNode]
 			pars.U = u.Value(refxs)
-			pars.GradU = u.ValueDeriv(refxs, nil)
+			pars.GradU = e.gradu
+			u.ValueDeriv(refxs, pars.GradU)
 			e.convertderiv(jac, pars.GradU, refxs)
 			return jacdet * k.VolIntU(pars)
 		}
