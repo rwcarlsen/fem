@@ -35,6 +35,76 @@ func IncompleteCholesky(A Matrix) Preconditioner {
 	}
 }
 
+func Jacobi(A Matrix) Preconditioner {
+	size, _ := A.Dims()
+	diag := make([]float64, size)
+	for i := range diag {
+		diag[i] = 1 / A.At(i, i)
+	}
+
+	return func(z, r []float64) {
+		for i, val := range r {
+			z[i] = val * diag[i]
+		}
+	}
+}
+
+func BlockLU(A Matrix, blocksize int) Preconditioner {
+	size, _ := A.Dims()
+	end := 0
+	lus := []*mat64.LU{}
+
+	//fmt.Printf("A=\n% .2v\n", mat64.Formatted(A))
+	for start := 0; end < size; start += blocksize {
+		end = start + blocksize
+		if end > size {
+			end = size
+		}
+		n := end - start
+
+		Asub := mat64.NewDense(n, n, nil)
+		ii := 0
+		for i := start; i < end; i++ {
+			jj := 0
+			for j := start; j < end; j++ {
+				Asub.Set(ii, jj, A.At(i, j))
+				jj++
+			}
+			ii++
+		}
+		//fmt.Printf("Asub=\n% .2v\n", mat64.Formatted(Asub))
+		var lu mat64.LU
+		lu.Factorize(Asub)
+		lus = append(lus, &lu)
+
+		var u mat64.Vector
+		b := mat64.NewVector(n, nil)
+		for i := 0; i < n; i++ {
+			b.SetVec(i, 1)
+		}
+		u.SolveVec(Asub, b)
+		//fmt.Printf("Ax=b soln:\n% .2v\n", mat64.Formatted(&u))
+	}
+
+	return func(z, r []float64) {
+		i := 0
+		u := mat64.NewVector(size, z)
+		b := mat64.NewVector(size, r)
+		end := 0
+		for start := 0; end < size; start += blocksize {
+			end = start + blocksize
+			if end > size {
+				end = size
+			}
+			subu := u.SliceVec(start, end)
+			subb := b.SliceVec(start, end)
+			subu.SolveLUVec(lus[i], false, subb)
+			//fmt.Printf("iterating Ax=b soln:\n% .2v\n", mat64.Formatted(u))
+			i++
+		}
+	}
+}
+
 type Cholesky struct {
 	L Matrix
 }
@@ -143,6 +213,9 @@ func (cg *CG) Status() string {
 func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 	if cg.Preconditioner == nil {
 		cg.Preconditioner = IncompleteCholesky(A)
+		//cg.Preconditioner = func(z, r []float64) { copy(z, r) }
+		//cg.Preconditioner = Jacobi(A)
+		//cg.Preconditioner = BlockLU(A, len(A.NonzeroRows(0))*2)
 	}
 
 	size := len(b)
@@ -279,3 +352,39 @@ func (GaussJordanSym) Solve(A Matrix, b []float64) ([]float64, error) {
 	}
 	return xx, nil
 }
+
+// Note that this implementation is untested and probably broken
+//type GaussSeidel struct{}
+//
+//func (g *GaussSeidel) solveRow(i int, A Matrix, b, soln []float64) {
+//	acceleration := 1.8 // between 1.0 and 2.0
+//	xold := soln[i]
+//	soln[i] = 0
+//
+//	Ainverse := 1 / A.At(i, i)
+//	dot := 0.0
+//	for _, nonzero := range A.SweepRow(i) {
+//		dot += nonzero.Val * soln[nonzero.I]
+//	}
+//
+//	xnew := (1-acceleration)*xold +
+//		acceleration*Ainverse*(b[i]-dot)
+//	soln[i] = xnew
+//}
+//
+//func (g *GaussSeidel) forwardIter(A Matrix, b, soln []float64) {
+//	for i := 0; i < len(b); i++ {
+//		g.solveRow(i, A, b, soln)
+//	}
+//}
+//
+//func (g *GaussSeidel) backwardIter(A Matrix, b, soln []float64) {
+//	for i := len(b) - 1; i >= 0; i-- {
+//		g.solveRow(i, A, b, soln)
+//	}
+//}
+//
+//func (g *GaussSeidel) Iterate(A Matrix, x, b []float64) {
+//	g.forwardIter(A, b, x)
+//	g.backwardIter(A, b, x)
+//}
