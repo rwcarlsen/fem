@@ -28,21 +28,23 @@ type Element interface {
 	Bounds() (low, up []float64)
 	// Contains returns true if x is inside this element and false otherwise.
 	Contains(x []float64) bool
-	// Coord returns the actual coordinates in the element for the given reference coordinates
-	// (between -1 and 1).  If x is not nil, it stores the real coordinates there and returns x.
+	// Coord returns the actual coordinates in the element for the given
+	// reference coordinates (between -1 and 1).  If x is not nil, it stores
+	// the real coordinates there and returns x.
 	Coord(x, refx []float64) []float64
 }
 
-// Converter represents functions that can generate/provide the (approximate) reference
-// coordinates for a given real coordinate on element e.
+// Converter represents functions that can generate/provide the (approximate)
+// reference coordinates for a given real coordinate on element e.
 type Converter func(e Element, x []float64) (refx []float64, err error)
 
-// PermConverter generates an element converter function which returns the (approximated)
-// reference coordinates of within an element for real coordinate position x.  An error is
-// returned if x is not contained inside the element.  The returned converter divides each
-// dimension into ndiv segments forming a multi-dimensional grid over the element's reference
-// coordinate domain.  Each grid point will be checked and the grid point corresponding to a real
-// coordinate closest to x will be returned.
+// PermConverter generates an element converter function which returns the
+// (approximated) reference coordinates of within an element for real
+// coordinate position x.  An error is returned if x is not contained inside
+// the element.  The returned converter divides each dimension into ndiv
+// segments forming a multi-dimensional grid over the element's reference
+// coordinate domain.  Each grid point will be checked and the grid point
+// corresponding to a real coordinate closest to x will be returned.
 func PermConverter(ndiv int) Converter {
 	return func(e Element, x []float64) ([]float64, error) {
 		realcoords := make([]float64, len(x))
@@ -76,8 +78,8 @@ func PermConverter(ndiv int) Converter {
 	}
 }
 
-// OptimConverter performs a local optimization using vanilla algorithms (e.g. gradient descent,
-// , newton, etc.) to find the reference coordinates for x.
+// OptimConverter performs a local optimization using vanilla algorithms (e.g.
+// gradient descent, , newton, etc.) to find the reference coordinates for x.
 func OptimConverter(e Element, x []float64) ([]float64, error) {
 	realcoords := make([]float64, len(x))
 	diff := make([]float64, len(x))
@@ -97,7 +99,8 @@ func OptimConverter(e Element, x []float64) ([]float64, error) {
 	return result.X, nil
 }
 
-// Interpolate returns the solution of the element at refx (reference coordinates [-1,1]).
+// Interpolate returns the solution of the element at refx (reference
+// coordinates [-1,1]).
 func Interpolate(e Element, refx []float64) float64 {
 	u := 0.0
 	for _, n := range e.Nodes() {
@@ -106,9 +109,9 @@ func Interpolate(e Element, refx []float64) float64 {
 	return u
 }
 
-// InterpolateDeriv returns the partial derivatives of the element at refx (reference coordinates
-// [-1,1]) for each dimension - i.e. the superposition of partial derivatives from each of the
-// element nodes.
+// InterpolateDeriv returns the partial derivatives of the element at refx
+// (reference coordinates [-1,1]) for each dimension - i.e. the superposition
+// of partial derivatives from each of the element nodes.
 func InterpolateDeriv(e Element, refx []float64) []float64 {
 	u := e.Nodes()[0].ValueDeriv(refx, nil)
 	for _, n := range e.Nodes()[1:] {
@@ -292,10 +295,12 @@ type ElementND struct {
 	pars      *KernelParams
 }
 
-// NewElementND creates a new 2D bilinear quad element.
-// (x1[0],x1[1]);(x2[0],x2[1]);... must specify coordinates for the
-// nodes running left to right (increasing x) in rows starting at the bottom and iterating towards
-// the top (increasing y).
+// NewElementND creates a new N-dimensional lagrange brick element (i.e. line,
+// quadrilateral, brick, hyperbrick).
+// (x1[0],x1[1],x[2],...);(x2[0],x2[1],x2[2],...);(...);... must specify
+// coordinates for the nodes running left to right (increasing x) in rows
+// starting at the lowest dimension and iterating recursively towards the
+// highest dimension.
 func NewElementND(order int, points ...[]float64) *ElementND {
 	ndim := len(points[0])
 	nodes := make([]*Node, len(points))
@@ -344,8 +349,9 @@ func (e *ElementND) Bounds() (low, up []float64) {
 	return e.low, e.up
 }
 
-// TODO: handle cases of higher order elements where this doesn't account for the fact that the
-// curved element edge could extend beyond the extreme node values.
+// TODO: handle cases of higher order elements where this doesn't account for
+// the fact that the curved element edge could extend beyond the extreme node
+// values.
 func (e *ElementND) extreme(coord int, less bool) float64 {
 	extreme := e.Nds[0].X[coord]
 	for _, n := range e.Nds[1:] {
@@ -395,8 +401,8 @@ func (e *ElementND) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	xs := make([]float64, nquadpoints)
 	weights := make([]float64, nquadpoints)
 	for d := 0; d < e.NDim; d++ {
-		// integrate over the face/side corresponding to pinning the variable in each dimension
-		// to its min and max values
+		// integrate over the face/side corresponding to pinning the variable
+		// in each dimension to its min and max values
 		fi.FixedDim = d
 		fi.FixedVal = -1
 		bound += QuadLegendre(e.NDim-1, fi.Func, -1, 1, nquadpoints, xs, weights)
@@ -495,7 +501,8 @@ func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
 	pars.W = fi.W.Weight(refxs)
 
 	if fi.U == nil {
-		// TODO: when we start caching KernelParams object, we will need to zero out U and GradU here
+		// TODO: when we start caching KernelParams object, we will need to
+		// zero out U and GradU here
 		return fi.K.BoundaryInt(pars) * jacdet
 	}
 	pars.U = fi.U.Value(refxs)
@@ -504,12 +511,14 @@ func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
 	return fi.K.BoundaryIntU(pars) * jacdet
 }
 
-// ConvertDeriv converts the dN/de and dN/dn (derivatives w.r.t. the reference coordinates) to
-// dN/dx and dN/dy (derivatives w.r.t. the real coordinates).  This is used to convert the GradU
-// and GradW terms to be the correct values when building the stiffness matrix.
+// ConvertDeriv converts the dN/de and dN/dn (derivatives w.r.t. the reference
+// coordinates) to dN/dx and dN/dy (derivatives w.r.t. the real coordinates).
+// This is used to convert the GradU and GradW terms to be the correct values
+// when building the stiffness matrix.
 func ConvertDeriv(jac *mat64.Dense, refgradu []float64, refxs []float64) {
 	ndim, _ := jac.Dims()
 	if ndim == 2 {
+		// fastpath for 2 dimensions
 		a := jac.At(0, 0)
 		b := jac.At(0, 1)
 		c := jac.At(1, 0)
@@ -520,8 +529,6 @@ func ConvertDeriv(jac *mat64.Dense, refgradu []float64, refxs []float64) {
 		refgradu[0] = s1
 		refgradu[1] = s2
 	} else {
-		// this branch (although never taken) exists to show the way to generalize for arbitrary
-		// dimensions
 		var soln mat64.Vector
 		soln.SolveVec(jac, mat64.NewVector(ndim, refgradu))
 		for i := range refgradu {
@@ -530,18 +537,21 @@ func ConvertDeriv(jac *mat64.Dense, refgradu []float64, refxs []float64) {
 	}
 }
 
-// This is used to compute the ratio of differential surface area at a particular point for which
-// the numerical jacobian jac is given.  jac is d(real or parent coords)/d(reference coords) for
-// the desired point/location.  fixedDim identifies the dimension of the reference coordinates
-// that is fixed - the differential area being computed by tangent vectors (i.e. built from the
-// jacobian entries) in the other dimensions.
+// This is used to compute the ratio of differential surface area at a
+// particular point for which the numerical jacobian jac is given.  jac is
+// d(real or parent coords)/d(reference coords) for the desired
+// point/location.  fixedDim identifies the dimension of the reference
+// coordinates that is fixed - the differential area being computed by tangent
+// vectors (i.e. built from the jacobian entries) in the other dimensions.
 //
-// This is a generalization of the surface area-ratio formula for parametric surfaces
-// (https://en.wikipedia.org/wiki/Parametric_surface#Surface_area) to multiple dimensions - we
-// take a higher dimensional cross-product of the tangent vectors (i.e. jacobian terms) to our
-// differential area of the element face using by replacing the jacobian row corresponding to the
-// fixed dimension with i_had, j_hat, etc. vectors.  The multi-dimensional cross product is
-// defined using the Hodge-star operator (https://en.wikipedia.org/wiki/Hodge_dual).  See also
+// This is a generalization of the surface area-ratio formula for parametric
+// surfaces (https://en.wikipedia.org/wiki/Parametric_surface#Surface_area) to
+// multiple dimensions - we take a higher dimensional cross-product of the
+// tangent vectors (i.e. jacobian terms) to our differential area of the
+// element face using by replacing the jacobian row corresponding to the fixed
+// dimension with i_had, j_hat, etc. vectors.  The multi-dimensional cross
+// product is defined using the Hodge-star operator
+// (https://en.wikipedia.org/wiki/Hodge_dual).  See also
 // https://math.stackexchange.com/questions/185991/is-the-vector-cross-product-only-defined-for-3d#186000.
 func faceArea(fixedDim int, jac *mat64.Dense) float64 {
 	ndim, _ := jac.Dims()
