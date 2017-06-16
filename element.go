@@ -286,8 +286,9 @@ type Element2D struct {
 	tmpXs     [][]float64
 	tmpDerivs [][]float64
 	tmpMat    *mat64.Dense
-	gradw     []float64
-	gradu     []float64
+	low, up   []float64
+	refxs     []float64
+	pars      *KernelParams
 }
 
 // NewElement2D creates a new 2D bilinear quad element.
@@ -309,8 +310,8 @@ func NewElement2D(order int, points ...[]float64) *Element2D {
 		Order:     order,
 		tmpXs:     make([][]float64, len(nodes)),
 		tmpDerivs: tmpderivs,
-		gradw:     make([]float64, ndim),
-		gradu:     make([]float64, ndim),
+		refxs:     make([]float64, ndim),
+		pars:      &KernelParams{X: make([]float64, ndim), GradW: make([]float64, ndim), GradU: make([]float64, ndim)},
 	}
 }
 
@@ -332,9 +333,12 @@ func (e *Element2D) Contains(x []float64) bool {
 }
 
 func (e *Element2D) Bounds() (low, up []float64) {
-	return []float64{e.xmin(), e.ymin()}, []float64{e.xmax(), e.ymax()}
+	if e.low == nil {
+		e.low = []float64{e.xmin(), e.ymin()}
+		e.up = []float64{e.xmax(), e.ymax()}
+	}
+	return e.low, e.up
 }
-
 func (e *Element2D) xmin() float64 { return e.min(0, true) }
 func (e *Element2D) xmax() float64 { return e.min(0, false) }
 func (e *Element2D) ymin() float64 { return e.min(1, true) }
@@ -389,16 +393,17 @@ func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 			varDim = 1
 		}
 
-		refxs := []float64{1, 1}
+		e.refxs[0] = 1
+		e.refxs[1] = 1
 		if minmax == minvar {
-			refxs[fixedDim] = -1
+			e.refxs[fixedDim] = -1
 		}
 
 		return func(ref float64) float64 {
-			refxs[varDim] = ref
-			xs := e.Coord(nil, refxs)
+			e.refxs[varDim] = ref
+			e.Coord(e.pars.X, e.refxs)
 
-			jac := e.jacobian(refxs)
+			jac := e.jacobian(e.refxs)
 			jacdet := 0.0
 			for i := 0; i < ndim; i++ {
 				v := jac.At(varDim, i)
@@ -406,18 +411,22 @@ func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 			}
 			jacdet = math.Sqrt(jacdet)
 
-			w.WeightDeriv(refxs, e.gradw)
-			e.convertderiv(jac, e.gradw, refxs)
-			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: e.gradw}
+			w.WeightDeriv(e.refxs, e.pars.GradW)
+			e.convertderiv(jac, e.pars.GradW, e.refxs)
+
+			e.pars.W = w.Weight(e.refxs)
+
 			if uNode < 0 {
-				return k.BoundaryInt(pars) * jacdet
+				e.pars.U = 0
+				e.pars.GradU[0] = 0
+				e.pars.GradU[1] = 0
+				return k.BoundaryInt(e.pars) * jacdet
 			}
 			u = e.Nds[uNode]
-			pars.U = u.Value(refxs)
-			pars.GradU = e.gradu
-			u.ValueDeriv(refxs, pars.GradU)
-			e.convertderiv(jac, pars.GradU, refxs)
-			return k.BoundaryIntU(pars) * jacdet
+			e.pars.U = u.Value(e.refxs)
+			u.ValueDeriv(e.refxs, e.pars.GradU)
+			e.convertderiv(jac, e.pars.GradU, e.refxs)
+			return k.BoundaryIntU(e.pars) * jacdet
 		}
 	}
 
@@ -434,11 +443,12 @@ func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 
 func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
 	outer := func(refx float64) float64 {
+		e.refxs[0] = refx
 		inner := func(refy float64) float64 {
-			refxs := []float64{refx, refy}
-			xs := e.Coord(nil, refxs)
+			e.refxs[1] = refy
+			e.Coord(e.pars.X, e.refxs)
 
-			jac := e.jacobian(refxs)
+			jac := e.jacobian(e.refxs)
 			// determinant of jacobian to convert from ref element integral to
 			// real coord integral:
 			//     J = | dx/de  dy/de |
@@ -446,18 +456,20 @@ func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
 			jacdet := det2x2(jac)
 
 			var w, u *Node = e.Nds[wNode], nil
-			w.WeightDeriv(refxs, e.gradw)
-			e.convertderiv(jac, e.gradw, refxs)
-			pars := &KernelParams{X: xs, W: w.Weight(refxs), GradW: e.gradw}
+			w.WeightDeriv(e.refxs, e.pars.GradW)
+			e.convertderiv(jac, e.pars.GradW, e.refxs)
+			e.pars.W = w.Weight(e.refxs)
 			if uNode < 0 {
-				return jacdet * k.VolInt(pars)
+				e.pars.U = 0
+				e.pars.GradU[0] = 0
+				e.pars.GradU[1] = 0
+				return jacdet * k.VolInt(e.pars)
 			}
 			u = e.Nds[uNode]
-			pars.U = u.Value(refxs)
-			pars.GradU = e.gradu
-			u.ValueDeriv(refxs, pars.GradU)
-			e.convertderiv(jac, pars.GradU, refxs)
-			return jacdet * k.VolIntU(pars)
+			e.pars.U = u.Value(e.refxs)
+			u.ValueDeriv(e.refxs, e.pars.GradU)
+			e.convertderiv(jac, e.pars.GradU, e.refxs)
+			return jacdet * k.VolIntU(e.pars)
 		}
 		return quad.Fixed(inner, -1, 1, 2, quad.Legendre{}, 0)
 	}
