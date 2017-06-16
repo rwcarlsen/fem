@@ -20,7 +20,12 @@ type Box struct {
 // dimensions in the problem (i.e. len(node.X())) child bounding boxes if the
 // number of elements in the box are greater than elemTarget.
 func NewBox(elems []Element, elemTarget, nsplit int) *Box {
-	lowest, upest := elems[0].Bounds()
+	l, u := elems[0].Bounds()
+	lowest := make([]float64, len(l))
+	upest := make([]float64, len(u))
+	copy(lowest, l)
+	copy(upest, u)
+
 	for _, elem := range elems[1:] {
 		low, up := elem.Bounds()
 		for i := range low {
