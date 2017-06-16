@@ -39,8 +39,10 @@ func main() {
 	}
 	if *dim == 1 {
 		TestHeatKernel()
-	} else {
+	} else if *dim == 2 {
 		TestHeatKernel2D()
+	} else {
+		TestHeatKernel3D()
 	}
 }
 
@@ -118,6 +120,55 @@ func TestHeatKernel2D() {
 	var buf bytes.Buffer
 	minbounds := []float64{xs[0], ys[0]}
 	maxbounds := []float64{xs[end], ys[end]}
+	printSolution(&buf, mesh, minbounds, maxbounds)
+
+	if *plot == "" {
+		log.Print("Solution:")
+		fmt.Print(buf.String())
+	} else {
+		cmd := exec.Command("gnuplot", "-e", `set terminal svg; set output "`+*plot+`"; plot "-" u 1:2:3 w image`)
+		cmd.Stdin = &buf
+		err := cmd.Run()
+		check(err)
+	}
+}
+
+func TestHeatKernel3D() {
+	// build mesh
+	xs := []float64{}
+	ys := []float64{}
+	zs := []float64{}
+	for i := 0; i < *ndivs; i++ {
+		xs = append(xs, float64(i)/float64(*ndivs-1)*4)
+		ys = append(ys, float64(i)/float64(*ndivs-1)*4)
+		zs = append(zs, float64(i)/float64(*ndivs-1)*4)
+	}
+	mesh, err := NewMeshSimple3D(*order, xs, ys, zs)
+	check(err)
+
+	// build kernel and boundary conditions
+	end := len(xs) - 1
+	boundary := &StructuredBoundary{
+		Tol:      1e-6,
+		Low:      []float64{0, 0},
+		Up:       []float64{4, 4},
+		LowTypes: []BoundaryType{Dirichlet, Dirichlet},
+		UpTypes:  []BoundaryType{Dirichlet, Dirichlet},
+		LowVals:  []float64{0, 0},
+		UpVals:   []float64{0, 0},
+	}
+
+	hc := &HeatConduction{
+		K:        ConstVal(2),  // thermal conductivity W/(m*C)
+		S:        ConstVal(50), // volumetric source W/m^3
+		Boundary: boundary,
+	}
+
+	solveProb(mesh, hc)
+
+	var buf bytes.Buffer
+	minbounds := []float64{xs[0], ys[0], zs[0]}
+	maxbounds := []float64{xs[end], ys[end], zs[end]}
 	printSolution(&buf, mesh, minbounds, maxbounds)
 
 	if *plot == "" {

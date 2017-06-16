@@ -1,5 +1,7 @@
 package main
 
+import "math"
+
 type BoundaryType int
 
 const (
@@ -74,6 +76,40 @@ type Boundary2D struct {
 	Vals []float64
 	// Tol is the distance within which a point is considered on the boundary.
 	Tol float64
+}
+
+type StructuredBoundary struct {
+	Tol      float64
+	Low      []float64
+	LowTypes []BoundaryType
+	LowVals  []float64
+	Up       []float64
+	UpTypes  []BoundaryType
+	UpVals   []float64
+}
+
+func (b *StructuredBoundary) Type(x []float64) BoundaryType {
+	for i := range b.Low {
+		l, u := b.Low[i], b.Up[i]
+		if math.Abs(l-x[i]) < b.Tol {
+			return b.LowTypes[i]
+		} else if math.Abs(u-x[i]) < b.Tol {
+			return b.UpTypes[i]
+		}
+	}
+	return Interior
+}
+
+func (b *StructuredBoundary) Val(x []float64) float64 {
+	for i := range b.Low {
+		l, u := b.Low[i], b.Up[i]
+		if math.Abs(l-x[i]) < b.Tol {
+			return b.LowVals[i]
+		} else if math.Abs(u-x[i]) < b.Tol {
+			return b.UpVals[i]
+		}
+	}
+	return 0
 }
 
 func (b *Boundary2D) Append(x, y float64, t BoundaryType, val float64) {

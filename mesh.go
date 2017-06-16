@@ -146,6 +146,37 @@ func NewMeshSimple2D(order int, xs, ys []float64) (*Mesh, error) {
 	return m, nil
 }
 
+func NewMeshSimple3D(order int, xs, ys, zs []float64) (*Mesh, error) {
+	m := &Mesh{}
+	if (len(xs)-1)%order != 0 || (len(ys)-1)%order != 0 {
+		return nil, fmt.Errorf("incompatible mesh order (%v) and dim division count (nx=%v,ny=%v)", order, len(xs), len(ys))
+	} else if len(xs) < 2 || len(ys) < 2 {
+		return nil, fmt.Errorf("simple 2D mesh requires at least two x and two y points")
+	}
+
+	n := order + 1
+
+	xDivs := (len(xs) - 1) / order
+	yDivs := (len(ys) - 1) / order
+	zDivs := (len(zs) - 1) / order
+	for i := 0; i < xDivs; i++ {
+		for j := 0; j < yDivs; j++ {
+			for k := 0; k < zDivs; k++ {
+				points := make([][]float64, 0, n*n*n)
+				for zoffset := 0; zoffset < n; zoffset++ {
+					for yoffset := 0; yoffset < n; yoffset++ {
+						for xoffset := 0; xoffset < n; xoffset++ {
+							points = append(points, []float64{xs[i*order+xoffset], ys[j*order+yoffset], zs[k*order+zoffset]})
+						}
+					}
+				}
+				m.AddElement(NewElementND(order, points...))
+			}
+		}
+	}
+	return m, nil
+}
+
 // Interpolate returns the finite element approximate for the solution at x.
 // Solve must have been called before this for it to return meaningful
 // results.
