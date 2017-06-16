@@ -382,131 +382,64 @@ func (e *Element2D) IntegrateForce(k Kernel, wNode int) float64 {
 
 func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	const ndim = 2
-	type minmaxvar bool
-	const minvar minmaxvar = true
-	const maxvar minmaxvar = false
-	var w, u *Node = e.Nds[wNode], nil
+	fi := &FaceIntegrator{
+		Elem: e,
+		W:    e.Nds[wNode],
+		K:    k,
+	}
 
-	fnFactory := func(fixedDim int, minmax minmaxvar) func(x float64) float64 {
-		varDim := 0
-		if fixedDim == 0 {
-			varDim = 1
-		}
-
-		e.refxs[0] = 1
-		e.refxs[1] = 1
-		if minmax == minvar {
-			e.refxs[fixedDim] = -1
-		}
-
-		return func(ref float64) float64 {
-			e.refxs[varDim] = ref
-			e.Coord(e.pars.X, e.refxs)
-
-			jac := e.jacobian(e.refxs)
-			jacdet := 0.0
-			for i := 0; i < ndim; i++ {
-				v := jac.At(varDim, i)
-				jacdet += v * v
-			}
-			jacdet = math.Sqrt(jacdet)
-
-			w.WeightDeriv(e.refxs, e.pars.GradW)
-			e.convertderiv(jac, e.pars.GradW, e.refxs)
-
-			e.pars.W = w.Weight(e.refxs)
-
-			if uNode < 0 {
-				e.pars.U = 0
-				e.pars.GradU[0] = 0
-				e.pars.GradU[1] = 0
-				return k.BoundaryInt(e.pars) * jacdet
-			}
-			u = e.Nds[uNode]
-			e.pars.U = u.Value(e.refxs)
-			u.ValueDeriv(e.refxs, e.pars.GradU)
-			e.convertderiv(jac, e.pars.GradU, e.refxs)
-			return k.BoundaryIntU(e.pars) * jacdet
-		}
+	if uNode >= 0 {
+		fi.U = e.Nds[uNode]
 	}
 
 	bound := 0.0
 	nquadpoints := int(math.Ceil((float64(e.Order) + 1) / 2))
+	xs := make([]float64, nquadpoints)
+	weights := make([]float64, nquadpoints)
 	for d := 0; d < ndim; d++ {
 		// integrate over the face/side corresponding to pinning the variable in each dimension
 		// to its min and max values
-		bound += quad.Fixed(fnFactory(d, minvar), -1, 1, nquadpoints, quad.Legendre{}, 0)
-		bound += quad.Fixed(fnFactory(d, maxvar), -1, 1, nquadpoints, quad.Legendre{}, 0)
+		fi.FixedDim = d
+		fi.FixedVal = -1
+		bound += QuadLegendre(ndim-1, fi.Func, -1, 1, nquadpoints, xs, weights)
+		fi.FixedVal = 1
+		bound += QuadLegendre(ndim-1, fi.Func, -1, 1, nquadpoints, xs, weights)
 	}
 	return bound
 }
 
 func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
-	outer := func(refx float64) float64 {
-		e.refxs[0] = refx
-		inner := func(refy float64) float64 {
-			e.refxs[1] = refy
-			e.Coord(e.pars.X, e.refxs)
+	fn := func(refxs []float64) float64 {
+		e.Coord(e.pars.X, refxs)
 
-			jac := e.jacobian(e.refxs)
-			// determinant of jacobian to convert from ref element integral to
-			// real coord integral:
-			//     J = | dx/de  dy/de |
-			//         | dx/dn  dy/dn |
-			jacdet := det2x2(jac)
+		jac := e.jacobian(refxs)
+		// determinant of jacobian to convert from ref element integral to
+		// real coord integral:
+		//     J = | dx/de  dy/de |
+		//         | dx/dn  dy/dn |
+		jacdet := det(jac)
 
-			var w, u *Node = e.Nds[wNode], nil
-			w.WeightDeriv(e.refxs, e.pars.GradW)
-			e.convertderiv(jac, e.pars.GradW, e.refxs)
-			e.pars.W = w.Weight(e.refxs)
-			if uNode < 0 {
-				e.pars.U = 0
-				e.pars.GradU[0] = 0
-				e.pars.GradU[1] = 0
-				return jacdet * k.VolInt(e.pars)
-			}
-			u = e.Nds[uNode]
-			e.pars.U = u.Value(e.refxs)
-			u.ValueDeriv(e.refxs, e.pars.GradU)
-			e.convertderiv(jac, e.pars.GradU, e.refxs)
-			return jacdet * k.VolIntU(e.pars)
+		var w, u *Node = e.Nds[wNode], nil
+		w.WeightDeriv(refxs, e.pars.GradW)
+		ConvertDeriv(jac, e.pars.GradW, e.refxs)
+		e.pars.W = w.Weight(refxs)
+		if uNode < 0 {
+			e.pars.U = 0
+			e.pars.GradU[0] = 0
+			e.pars.GradU[1] = 0
+			return jacdet * k.VolInt(e.pars)
 		}
-		return quad.Fixed(inner, -1, 1, 2, quad.Legendre{}, 0)
+		u = e.Nds[uNode]
+		e.pars.U = u.Value(refxs)
+		u.ValueDeriv(refxs, e.pars.GradU)
+		ConvertDeriv(jac, e.pars.GradU, refxs)
+		return jacdet * k.VolIntU(e.pars)
 	}
-	return quad.Fixed(outer, -1, 1, 2, quad.Legendre{}, 0)
-}
-
-func det2x2(m *mat64.Dense) float64 {
-	a := m.At(0, 0)
-	b := m.At(0, 1)
-	c := m.At(1, 0)
-	d := m.At(1, 1)
-	return (a*d - b*c)
-}
-
-// convertderiv converts the dN/de and dN/dn (derivatives w.r.t. the reference coordinates) to
-// dN/dx and dN/dy (derivatives w.r.t. the real coordinates).  This is used to convert the GradU
-// and GradW terms to be the correct values when building the stiffness matrix.
-func (e *Element2D) convertderiv(jac *mat64.Dense, refgradu []float64, refxs []float64) {
 	const ndim = 2
-	if ndim == 2 {
-		a := jac.At(0, 0)
-		b := jac.At(0, 1)
-		c := jac.At(1, 0)
-		d := jac.At(1, 1)
-		invdet := 1 / (a*d - b*c)
-		s1 := invdet * (d*refgradu[0] - b*refgradu[1])
-		s2 := invdet * (-c*refgradu[0] + a*refgradu[1])
-		refgradu[0] = s1
-		refgradu[1] = s2
-	} else {
-		// this branch (although never taken) exists to show the way to generalize for arbitrary
-		// dimensions
-		var soln mat64.Vector
-		soln.SolveVec(jac, mat64.NewVector(2, refgradu))
-		refgradu[0] = soln.At(0, 0)
-		refgradu[1] = soln.At(1, 0)
-	}
+	nquadpoints := int(math.Ceil((float64(e.Order) + 1) / 2))
+	xs := make([]float64, nquadpoints)
+	weights := make([]float64, nquadpoints)
+	return QuadLegendre(ndim, fn, -1, 1, nquadpoints, xs, weights)
 }
 
 func (e *Element2D) jacobian(refxs []float64) *mat64.Dense {
@@ -530,4 +463,110 @@ func (e *Element2D) jacobian(refxs []float64) *mat64.Dense {
 		}
 	}
 	return e.tmpMat
+}
+
+type FaceIntegrator struct {
+	FixedDim int
+	FixedVal float64
+	Elem     *Element2D
+	U, W     *Node
+	K        Kernel
+}
+
+func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
+	ndim := len(partialrefxs) + 1
+	refxs := make([]float64, ndim)
+
+	// rebuild full-rank coordinates
+	refi := 0
+	for i := range refxs {
+		if i == fi.FixedDim {
+			refxs[i] = fi.FixedVal
+		} else {
+			refxs[i] = partialrefxs[refi]
+			refi++
+		}
+	}
+
+	jac := fi.Elem.jacobian(refxs)
+	jacdet := faceArea(fi.FixedDim, jac)
+
+	pars := &KernelParams{}
+	pars.X = fi.Elem.Coord(pars.X, refxs)
+	pars.GradW = fi.W.WeightDeriv(refxs, pars.GradW)
+	ConvertDeriv(jac, pars.GradW, refxs)
+	pars.W = fi.W.Weight(refxs)
+
+	if fi.U == nil {
+		// TODO: when we start caching KernelParams object, we will need to zero out U and GradU here
+		return fi.K.BoundaryInt(pars) * jacdet
+	}
+	pars.U = fi.U.Value(refxs)
+	pars.GradU = fi.U.ValueDeriv(refxs, pars.GradU)
+	ConvertDeriv(jac, pars.GradU, refxs)
+	return fi.K.BoundaryIntU(pars) * jacdet
+}
+
+// ConvertDeriv converts the dN/de and dN/dn (derivatives w.r.t. the reference coordinates) to
+// dN/dx and dN/dy (derivatives w.r.t. the real coordinates).  This is used to convert the GradU
+// and GradW terms to be the correct values when building the stiffness matrix.
+func ConvertDeriv(jac *mat64.Dense, refgradu []float64, refxs []float64) {
+	const ndim = 2
+	if ndim == 2 {
+		a := jac.At(0, 0)
+		b := jac.At(0, 1)
+		c := jac.At(1, 0)
+		d := jac.At(1, 1)
+		invdet := 1 / (a*d - b*c)
+		s1 := invdet * (d*refgradu[0] - b*refgradu[1])
+		s2 := invdet * (-c*refgradu[0] + a*refgradu[1])
+		refgradu[0] = s1
+		refgradu[1] = s2
+	} else {
+		// this branch (although never taken) exists to show the way to generalize for arbitrary
+		// dimensions
+		var soln mat64.Vector
+		soln.SolveVec(jac, mat64.NewVector(2, refgradu))
+		refgradu[0] = soln.At(0, 0)
+		refgradu[1] = soln.At(1, 0)
+	}
+}
+
+// This is used to compute the ratio of differential surface area at a particular point for which
+// the numerical jacobian jac is given.  jac is d(real or parent coords)/d(reference coords) for
+// the desired point/location.  fixedDim identifies the dimension of the reference coordinates
+// that is fixed - the differential area being computed by tangent vectors (i.e. built from the
+// jacobian entries) in the other dimensions.
+//
+// This is a generalization of the surface area-ratio formula for parametric surfaces
+// (https://en.wikipedia.org/wiki/Parametric_surface#Surface_area) to multiple dimensions - we
+// take a higher dimensional cross-product of the tangent vectors (i.e. jacobian terms) to our
+// differential area of the element face using by replacing the jacobian row corresponding to the
+// fixed dimension with i_had, j_hat, etc. vectors.  The multi-dimensional cross product is
+// defined using the Hodge-star operator (https://en.wikipedia.org/wiki/Hodge_dual).  See also
+// https://math.stackexchange.com/questions/185991/is-the-vector-cross-product-only-defined-for-3d#186000.
+func faceArea(fixedDim int, jac *mat64.Dense) float64 {
+	ndim, _ := jac.Dims()
+	tot := 0.0
+	subjac := mat64.NewDense(ndim-1, ndim-1, nil)
+	for direc := 0; direc < ndim; direc++ {
+		ii := 0
+		for i := 0; i < ndim; i++ {
+			if i == fixedDim {
+				continue
+			}
+			jj := 0
+			for j := 0; j < ndim; j++ {
+				if j == direc {
+					continue
+				}
+				subjac.Set(ii, jj, jac.At(i, j))
+				jj++
+			}
+			ii++
+		}
+		d := mat64.Det(subjac)
+		tot += d * d
+	}
+	return math.Sqrt(tot)
 }

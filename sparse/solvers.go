@@ -232,11 +232,15 @@ func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 	cg.Preconditioner(z, r)
 	copy(p, z)
 
+	// save original residual
+	r0 := make([]float64, size)
+	copy(r0, r)
+
 	for cg.niter = 1; cg.niter <= cg.MaxIter; cg.niter++ {
 		alpha := dot(r, z) / dot(p, Mul(A, p))
 		vecAdd(x, x, vecMult(p, alpha))             // xnext = x+alpha*p
 		vecSub(rnext, r, vecMult(Mul(A, p), alpha)) // rnext = r-alpha*A*p
-		diff := math.Sqrt(dot(rnext, rnext))
+		diff := math.Sqrt(dot(rnext, rnext)) / float64(size)
 		if diff < cg.Tol {
 			break
 		}

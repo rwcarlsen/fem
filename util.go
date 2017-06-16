@@ -1,6 +1,62 @@
 package main
 
-import "math"
+import (
+	"math"
+
+	"github.com/gonum/integrate/quad"
+	"github.com/gonum/matrix/mat64"
+)
+
+func QuadLegendre(ndim int, f func([]float64) float64, min, max float64, n int, xs, weights []float64) float64 {
+	if n <= 0 {
+		panic("quad: non-positive number of locations")
+	} else if min > max {
+		panic("quad: min > max")
+	} else if min == max {
+		return 0
+	}
+
+	if len(xs) != n {
+		xs = make([]float64, n)
+	}
+	if len(weights) != n {
+		weights = make([]float64, n)
+	}
+
+	rule := quad.Legendre{}
+	rule.FixedLocations(xs, weights, min, max)
+
+	dims := make([]int, ndim)
+	for i := range dims {
+		dims[i] = n
+	}
+	perms := Permute(nil, dims...)
+
+	fullxs := make([]float64, ndim)
+	var integral float64
+	for _, perm := range perms {
+		w := 1.0
+		for d, i := range perm {
+			fullxs[d] = xs[i]
+			w *= weights[i]
+		}
+		integral += w * f(fullxs)
+	}
+
+	return integral
+}
+
+func det(m *mat64.Dense) float64 {
+	ndim, _ := m.Dims()
+	if ndim == 2 {
+		a := m.At(0, 0)
+		b := m.At(0, 1)
+		c := m.At(1, 0)
+		d := m.At(1, 1)
+		return (a*d - b*c)
+	}
+	return mat64.Det(m)
+}
 
 func absInt(v int) int {
 	if v < 0 {
