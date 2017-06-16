@@ -38,6 +38,15 @@ type Element interface {
 // reference coordinates for a given real coordinate on element e.
 type Converter func(e Element, x []float64) (refx []float64, err error)
 
+func StructuredConverter(e Element, x []float64) (refx []float64, err error) {
+	low, up := e.Bounds()
+	refx = make([]float64, len(x))
+	for d := range low {
+		refx[d] = -1 + 2*(x[d]-low[d])/(up[d]-low[d])
+	}
+	return refx, nil
+}
+
 // PermConverter generates an element converter function which returns the
 // (approximated) reference coordinates of within an element for real
 // coordinate position x.  An error is returned if x is not contained inside
@@ -286,6 +295,7 @@ type ElementND struct {
 	Nds   []*Node
 	Order int
 	NDim  int
+	Conv  Converter
 	// the following variables cache values for reuse
 	tmpXs     [][]float64
 	tmpDerivs [][]float64
@@ -315,6 +325,7 @@ func NewElementND(order int, points ...[]float64) *ElementND {
 		Nds:       nodes,
 		Order:     order,
 		NDim:      ndim,
+		Conv:      OptimConverter,
 		tmpXs:     make([][]float64, len(nodes)),
 		tmpDerivs: tmpderivs,
 		refxs:     make([]float64, ndim),
@@ -325,7 +336,7 @@ func NewElementND(order int, points ...[]float64) *ElementND {
 func (e *ElementND) Nodes() []*Node { return e.Nds }
 
 func (e *ElementND) Contains(x []float64) bool {
-	refxs, err := OptimConverter(e, x)
+	refxs, err := e.Conv(e, x)
 	if err != nil {
 		panic(err)
 	}

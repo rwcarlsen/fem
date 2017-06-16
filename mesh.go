@@ -101,7 +101,7 @@ func (m *Mesh) AddElement(e Element) error {
 // points and order specifies the polynomial shape function order used in each element to
 // approximate the solution.
 func NewMeshSimple1D(order int, nodePos []float64) (*Mesh, error) {
-	m := &Mesh{Bandwidth: order}
+	m := &Mesh{Bandwidth: order, Conv: StructuredConverter}
 	if (len(nodePos)-1)%order != 0 {
 		return nil, fmt.Errorf("incompatible mesh order (%v) and dim division count (%v)", order, len(nodePos))
 	}
@@ -112,7 +112,9 @@ func NewMeshSimple1D(order int, nodePos []float64) (*Mesh, error) {
 		for j := 0; j < order+1; j++ {
 			xs[j] = []float64{nodePos[i*order+j]}
 		}
-		m.AddElement(NewElementND(order, xs...))
+		e := NewElementND(order, xs...)
+		e.Conv = StructuredConverter
+		m.AddElement(e)
 	}
 	return m, nil
 }
@@ -121,7 +123,7 @@ func NewMeshSimple1D(order int, nodePos []float64) (*Mesh, error) {
 // the grid of points specified by y-axis-parallel lines drawn through each x in xs and
 // x-axis-parallel points drawn through each y in ys.
 func NewMeshSimple2D(order int, xs, ys []float64) (*Mesh, error) {
-	m := &Mesh{}
+	m := &Mesh{Conv: StructuredConverter}
 	if (len(xs)-1)%order != 0 || (len(ys)-1)%order != 0 {
 		return nil, fmt.Errorf("incompatible mesh order (%v) and dim division count (nx=%v,ny=%v)", order, len(xs), len(ys))
 	} else if len(xs) < 2 || len(ys) < 2 {
@@ -140,14 +142,16 @@ func NewMeshSimple2D(order int, xs, ys []float64) (*Mesh, error) {
 					points = append(points, []float64{xs[i*order+xoffset], ys[j*order+yoffset]})
 				}
 			}
-			m.AddElement(NewElementND(order, points...))
+			e := NewElementND(order, points...)
+			e.Conv = StructuredConverter
+			m.AddElement(e)
 		}
 	}
 	return m, nil
 }
 
 func NewMeshSimple3D(order int, xs, ys, zs []float64) (*Mesh, error) {
-	m := &Mesh{}
+	m := &Mesh{Conv: StructuredConverter}
 	if (len(xs)-1)%order != 0 || (len(ys)-1)%order != 0 {
 		return nil, fmt.Errorf("incompatible mesh order (%v) and dim division count (nx=%v,ny=%v)", order, len(xs), len(ys))
 	} else if len(xs) < 2 || len(ys) < 2 {
@@ -170,7 +174,9 @@ func NewMeshSimple3D(order int, xs, ys, zs []float64) (*Mesh, error) {
 						}
 					}
 				}
-				m.AddElement(NewElementND(order, points...))
+				e := NewElementND(order, points...)
+				e.Conv = StructuredConverter
+				m.AddElement(e)
 			}
 		}
 	}
