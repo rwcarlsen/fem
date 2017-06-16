@@ -108,11 +108,11 @@ func NewMeshSimple1D(order int, nodePos []float64) (*Mesh, error) {
 
 	nElems := (len(nodePos) - 1) / order
 	for i := 0; i < nElems; i++ {
-		xs := make([]float64, order+1)
+		xs := make([][]float64, order+1)
 		for j := 0; j < order+1; j++ {
-			xs[j] = nodePos[i*order+j]
+			xs[j] = []float64{nodePos[i*order+j]}
 		}
-		m.AddElement(NewElement1D(xs))
+		m.AddElement(NewElementND(order, xs...))
 	}
 	return m, nil
 }
@@ -140,7 +140,7 @@ func NewMeshSimple2D(order int, xs, ys []float64) (*Mesh, error) {
 					points = append(points, []float64{xs[i*order+xoffset], ys[j*order+yoffset]})
 				}
 			}
-			m.AddElement(NewElement2D(order, points...))
+			m.AddElement(NewElementND(order, points...))
 		}
 	}
 	return m, nil

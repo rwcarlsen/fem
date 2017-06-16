@@ -35,7 +35,7 @@ func TestElement1D(t *testing.T) {
 	}
 }
 
-func TestElement2D_Contains(t *testing.T) {
+func TestElementND_Contains(t *testing.T) {
 	tests := []struct {
 		Xs     [][]float64
 		Points [][]float64
@@ -63,7 +63,7 @@ func TestElement2D_Contains(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		e := NewElement2D(1, test.Xs...)
+		e := NewElementND(1, test.Xs...)
 		t.Logf("case %v (nodes=%v):", i+1, test.Xs)
 		for j, point := range test.Points {
 			if e.Contains(point) != test.Inside[j] {
@@ -75,7 +75,7 @@ func TestElement2D_Contains(t *testing.T) {
 	}
 }
 
-func TestElement2D_Coord(t *testing.T) {
+func TestElementND_Coord(t *testing.T) {
 	tests := []struct {
 		x1, x2, x3, x4 []float64
 		RefPoints      [][]float64
@@ -106,7 +106,7 @@ func TestElement2D_Coord(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		e := NewElement2D(1, test.x1, test.x2, test.x3, test.x4)
+		e := NewElementND(1, test.x1, test.x2, test.x3, test.x4)
 		t.Logf("case %v (x1=%v, x2=%v, x3=%v, x4=%v):", i+1, test.x1, test.x2, test.x3, test.x4)
 		for j, refx := range test.RefPoints {
 			want := test.RealPoints[j]
@@ -135,7 +135,7 @@ func (k testKernel) BoundaryIntU(p *KernelParams) float64     { return float64(k
 func (k testKernel) BoundaryInt(p *KernelParams) float64      { return float64(k) * p.U }
 func (k testKernel) IsDirichlet(xs []float64) (bool, float64) { return false, 0 }
 
-func TestElement2D_IntegrateBoundary(t *testing.T) {
+func TestElementND_IntegrateBoundary(t *testing.T) {
 	const volume = 1
 	const boundary = 2
 	tests := []struct {
@@ -222,7 +222,7 @@ func TestElement2D_IntegrateBoundary(t *testing.T) {
 
 	for i, test := range tests {
 		ts := test
-		elem := NewElement2D(1, ts.X1, ts.X2, ts.X3, ts.X4)
+		elem := NewElementND(1, ts.X1, ts.X2, ts.X3, ts.X4)
 
 		nds := elem.Nodes()
 		nds[0].Set(test.V1, 1)

@@ -14,6 +14,8 @@ func QuadLegendre(ndim int, f func([]float64) float64, min, max float64, n int, 
 		panic("quad: min > max")
 	} else if min == max {
 		return 0
+	} else if ndim == 0 {
+		return f(nil)
 	}
 
 	if len(xs) != n {

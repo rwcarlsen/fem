@@ -279,9 +279,10 @@ func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
 	}
 }
 
-type Element2D struct {
+type ElementND struct {
 	Nds   []*Node
 	Order int
+	NDim  int
 	// the following variables cache values for reuse
 	tmpXs     [][]float64
 	tmpDerivs [][]float64
@@ -291,12 +292,12 @@ type Element2D struct {
 	pars      *KernelParams
 }
 
-// NewElement2D creates a new 2D bilinear quad element.
+// NewElementND creates a new 2D bilinear quad element.
 // (x1[0],x1[1]);(x2[0],x2[1]);... must specify coordinates for the
 // nodes running left to right (increasing x) in rows starting at the bottom and iterating towards
 // the top (increasing y).
-func NewElement2D(order int, points ...[]float64) *Element2D {
-	const ndim = 2
+func NewElementND(order int, points ...[]float64) *ElementND {
+	ndim := len(points[0])
 	nodes := make([]*Node, len(points))
 	for i, x := range points {
 		nodes[i] = &Node{X: x, U: 1.0, W: 1.0, ShapeFunc: NewLagrangeND(order, i)}
@@ -305,9 +306,10 @@ func NewElement2D(order int, points ...[]float64) *Element2D {
 	for i := range tmpderivs {
 		tmpderivs[i] = make([]float64, ndim)
 	}
-	return &Element2D{
+	return &ElementND{
 		Nds:       nodes,
 		Order:     order,
+		NDim:      ndim,
 		tmpXs:     make([][]float64, len(nodes)),
 		tmpDerivs: tmpderivs,
 		refxs:     make([]float64, ndim),
@@ -315,9 +317,9 @@ func NewElement2D(order int, points ...[]float64) *Element2D {
 	}
 }
 
-func (e *Element2D) Nodes() []*Node { return e.Nds }
+func (e *ElementND) Nodes() []*Node { return e.Nds }
 
-func (e *Element2D) Contains(x []float64) bool {
+func (e *ElementND) Contains(x []float64) bool {
 	refxs, err := OptimConverter(e, x)
 	if err != nil {
 		panic(err)
@@ -332,21 +334,19 @@ func (e *Element2D) Contains(x []float64) bool {
 	return true
 }
 
-func (e *Element2D) Bounds() (low, up []float64) {
+func (e *ElementND) Bounds() (low, up []float64) {
 	if e.low == nil {
-		e.low = []float64{e.xmin(), e.ymin()}
-		e.up = []float64{e.xmax(), e.ymax()}
+		for d := 0; d < e.NDim; d++ {
+			e.low = append(e.low, e.extreme(d, true))
+			e.up = append(e.up, e.extreme(d, false))
+		}
 	}
 	return e.low, e.up
 }
-func (e *Element2D) xmin() float64 { return e.min(0, true) }
-func (e *Element2D) xmax() float64 { return e.min(0, false) }
-func (e *Element2D) ymin() float64 { return e.min(1, true) }
-func (e *Element2D) ymax() float64 { return e.min(1, false) }
 
 // TODO: handle cases of higher order elements where this doesn't account for the fact that the
 // curved element edge could extend beyond the extreme node values.
-func (e *Element2D) min(coord int, less bool) float64 {
+func (e *ElementND) extreme(coord int, less bool) float64 {
 	extreme := e.Nds[0].X[coord]
 	for _, n := range e.Nds[1:] {
 		if n.X[coord] < extreme && less || n.X[coord] > extreme && !less {
@@ -356,13 +356,12 @@ func (e *Element2D) min(coord int, less bool) float64 {
 	return extreme
 }
 
-func (e *Element2D) Coord(x, refx []float64) []float64 {
-	const ndim = 2
+func (e *ElementND) Coord(x, refx []float64) []float64 {
 	if x == nil {
-		x = make([]float64, ndim)
+		x = make([]float64, e.NDim)
 	}
 
-	for i := 0; i < ndim; i++ {
+	for i := 0; i < e.NDim; i++ {
 		tot := 0.0
 		for _, n := range e.Nds {
 			tot += n.ShapeFunc.Value(refx) * n.X[i]
@@ -372,16 +371,15 @@ func (e *Element2D) Coord(x, refx []float64) []float64 {
 	return x
 }
 
-func (e *Element2D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
+func (e *ElementND) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
 	return e.integrateVol(k, wNode, uNode) + e.integrateBoundary(k, wNode, uNode)
 }
 
-func (e *Element2D) IntegrateForce(k Kernel, wNode int) float64 {
+func (e *ElementND) IntegrateForce(k Kernel, wNode int) float64 {
 	return e.integrateVol(k, wNode, -1) + e.integrateBoundary(k, wNode, -1)
 }
 
-func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
-	const ndim = 2
+func (e *ElementND) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	fi := &FaceIntegrator{
 		Elem: e,
 		W:    e.Nds[wNode],
@@ -396,19 +394,19 @@ func (e *Element2D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	nquadpoints := int(math.Ceil((float64(e.Order) + 1) / 2))
 	xs := make([]float64, nquadpoints)
 	weights := make([]float64, nquadpoints)
-	for d := 0; d < ndim; d++ {
+	for d := 0; d < e.NDim; d++ {
 		// integrate over the face/side corresponding to pinning the variable in each dimension
 		// to its min and max values
 		fi.FixedDim = d
 		fi.FixedVal = -1
-		bound += QuadLegendre(ndim-1, fi.Func, -1, 1, nquadpoints, xs, weights)
+		bound += QuadLegendre(e.NDim-1, fi.Func, -1, 1, nquadpoints, xs, weights)
 		fi.FixedVal = 1
-		bound += QuadLegendre(ndim-1, fi.Func, -1, 1, nquadpoints, xs, weights)
+		bound += QuadLegendre(e.NDim-1, fi.Func, -1, 1, nquadpoints, xs, weights)
 	}
 	return bound
 }
 
-func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
+func (e *ElementND) integrateVol(k Kernel, wNode, uNode int) float64 {
 	fn := func(refxs []float64) float64 {
 		e.Coord(e.pars.X, refxs)
 
@@ -425,8 +423,9 @@ func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
 		e.pars.W = w.Weight(refxs)
 		if uNode < 0 {
 			e.pars.U = 0
-			e.pars.GradU[0] = 0
-			e.pars.GradU[1] = 0
+			for i := range e.pars.GradU {
+				e.pars.GradU[i] = 0
+			}
 			return jacdet * k.VolInt(e.pars)
 		}
 		u = e.Nds[uNode]
@@ -435,17 +434,15 @@ func (e *Element2D) integrateVol(k Kernel, wNode, uNode int) float64 {
 		ConvertDeriv(jac, e.pars.GradU, refxs)
 		return jacdet * k.VolIntU(e.pars)
 	}
-	const ndim = 2
 	nquadpoints := int(math.Ceil((float64(e.Order) + 1) / 2))
 	xs := make([]float64, nquadpoints)
 	weights := make([]float64, nquadpoints)
-	return QuadLegendre(ndim, fn, -1, 1, nquadpoints, xs, weights)
+	return QuadLegendre(e.NDim, fn, -1, 1, nquadpoints, xs, weights)
 }
 
-func (e *Element2D) jacobian(refxs []float64) *mat64.Dense {
-	const ndim = 2
+func (e *ElementND) jacobian(refxs []float64) *mat64.Dense {
 	if e.tmpMat == nil {
-		e.tmpMat = mat64.NewDense(ndim, ndim, nil)
+		e.tmpMat = mat64.NewDense(e.NDim, e.NDim, nil)
 	}
 
 	for i, n := range e.Nds {
@@ -453,8 +450,8 @@ func (e *Element2D) jacobian(refxs []float64) *mat64.Dense {
 		e.tmpXs[i] = n.X
 	}
 
-	for i := 0; i < ndim; i++ {
-		for j := 0; j < ndim; j++ {
+	for i := 0; i < e.NDim; i++ {
+		for j := 0; j < e.NDim; j++ {
 			tot := 0.0
 			for n := range e.Nds {
 				tot += e.tmpDerivs[n][i] * e.tmpXs[n][j]
@@ -468,7 +465,7 @@ func (e *Element2D) jacobian(refxs []float64) *mat64.Dense {
 type FaceIntegrator struct {
 	FixedDim int
 	FixedVal float64
-	Elem     *Element2D
+	Elem     *ElementND
 	U, W     *Node
 	K        Kernel
 }
@@ -511,7 +508,7 @@ func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
 // dN/dx and dN/dy (derivatives w.r.t. the real coordinates).  This is used to convert the GradU
 // and GradW terms to be the correct values when building the stiffness matrix.
 func ConvertDeriv(jac *mat64.Dense, refgradu []float64, refxs []float64) {
-	const ndim = 2
+	ndim, _ := jac.Dims()
 	if ndim == 2 {
 		a := jac.At(0, 0)
 		b := jac.At(0, 1)
@@ -526,9 +523,10 @@ func ConvertDeriv(jac *mat64.Dense, refgradu []float64, refxs []float64) {
 		// this branch (although never taken) exists to show the way to generalize for arbitrary
 		// dimensions
 		var soln mat64.Vector
-		soln.SolveVec(jac, mat64.NewVector(2, refgradu))
-		refgradu[0] = soln.At(0, 0)
-		refgradu[1] = soln.At(1, 0)
+		soln.SolveVec(jac, mat64.NewVector(ndim, refgradu))
+		for i := range refgradu {
+			refgradu[i] = soln.At(i, 0)
+		}
 	}
 }
 
