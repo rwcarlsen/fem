@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
+	"runtime"
 	"runtime/pprof"
 
 	"github.com/gonum/matrix/mat64"
@@ -23,8 +26,10 @@ var nsoln = flag.Int("nsol", 10, "number of uniformly distributed points to samp
 var solver = flag.String("solver", "gaussian", "solver type (gaussian, denselu, cg)")
 var dim = flag.Int("dim", 1, "dimesionality of sample problem - either 1 or 2")
 
-var cpuprofile = flag.String("cpuprofile", "", "profile file name")
 var plot = flag.String("plot", "", "'svg' to create svg plot with gnuplot")
+
+var cpuprofile = flag.String("cpuprofile", "", "profile file name")
+var memprofile = flag.String("memprofile", "", "write memory profile to this file")
 
 func main() {
 	log.SetFlags(0)
@@ -37,6 +42,11 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
+
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
 	if *dim == 1 {
 		TestHeatKernel()
 	} else if *dim == 2 {
@@ -44,6 +54,19 @@ func main() {
 	} else {
 		TestHeatKernel3D()
 	}
+
+	if *memprofile != "" {
+		f, err := os.Create(*memprofile)
+		if err != nil {
+			log.Fatal("could not create memory profile: ", err)
+		}
+		runtime.GC() // get up-to-date statistics
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			log.Fatal("could not write memory profile: ", err)
+		}
+		f.Close()
+	}
+
 }
 
 func check(err error) {

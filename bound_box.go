@@ -109,7 +109,15 @@ func (b *Box) split(elemTarget, nsplit int) {
 
 func (b *Box) splitBox(n int) {
 	ndim := len(b.Low)
+	tot := 1
+	for i := 0; i < n; i++ {
+		tot *= ndim
+	}
+	if tot > len(b.Elems) {
+		n = 2
+	}
 	combs := combinations(ndim, n, nil)
+
 	b.children = make([]*Box, len(combs))
 	for i, comb := range combs {
 		b.children[i] = &Box{}
