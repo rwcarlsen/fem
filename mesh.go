@@ -15,6 +15,9 @@ type Mesh struct {
 	// Elems is an (arbitrarily) ordered list of elements that make up the
 	// mesh.
 	Elems []Element
+	// notEdges stores a hint for each element that is true if the element is
+	// not on a boundary.
+	notEdges []bool
 	// nodeIndex maps all nodes to a global index/ID
 	nodeIndex map[*Node]int
 	// indexNode maps all global node indices to a list of nodes at the
@@ -88,12 +91,14 @@ func (m *Mesh) NumDOF() int { return len(m.indexNode) }
 
 // AddElement is for adding custom-built elements to a mesh.  When all
 // elements have been added.  Elements must form a single, contiguous domain
-// (i.e.  with no holes/gaps).
-func (m *Mesh) AddElement(e Element) error {
+// (i.e.  with no holes/gaps).  notEdge is a hint that, if true, the mesh assumes
+// the element is not on an edge and can be skipped for boundary operations.
+func (m *Mesh) AddElement(e Element, notEdge bool) error {
 	if len(m.nodeIndex) > 0 {
 		return fmt.Errorf("cannot add elements to a finalized mesh")
 	}
 	m.Elems = append(m.Elems, e)
+	m.notEdges = append(m.notEdges, notEdge)
 	return nil
 }
 
@@ -114,7 +119,7 @@ func NewMeshSimple1D(order int, nodePos []float64) (*Mesh, error) {
 		}
 		e := NewElementND(order, xs...)
 		e.Conv = StructuredConverter
-		m.AddElement(e)
+		m.AddElement(e, i > 0 && i < nElems-1)
 	}
 	return m, nil
 }
@@ -142,9 +147,10 @@ func NewMeshSimple2D(order int, xs, ys []float64) (*Mesh, error) {
 					points = append(points, []float64{xs[i*order+xoffset], ys[j*order+yoffset]})
 				}
 			}
+			edge := i == 0 || i == xDivs-1 || j == 0 || j == yDivs-1
 			e := NewElementND(order, points...)
 			e.Conv = StructuredConverter
-			m.AddElement(e)
+			m.AddElement(e, !edge)
 		}
 	}
 	return m, nil
@@ -176,7 +182,8 @@ func NewMeshSimple3D(order int, xs, ys, zs []float64) (*Mesh, error) {
 				}
 				e := NewElementND(order, points...)
 				e.Conv = StructuredConverter
-				m.AddElement(e)
+				edge := i == 0 || i == xDivs-1 || j == 0 || j == yDivs-1 || k == 0 || k == zDivs-1
+				m.AddElement(e, !edge)
 			}
 		}
 	}
@@ -319,7 +326,7 @@ func (m *Mesh) ForceVector(k Kernel) []float64 {
 				f[a] = v
 				continue
 			}
-			f[a] += elem.IntegrateForce(k, i)
+			f[a] += elem.IntegrateForce(k, i, false)
 		}
 	}
 	return f
@@ -342,7 +349,7 @@ func (m *Mesh) StiffnessMatrix(k Kernel) *sparse.Sparse {
 				if m.Bandwidth > 0 && absInt(a-b) > m.Bandwidth {
 					continue
 				}
-				v := elem.IntegrateStiffness(k, i, j)
+				v := elem.IntegrateStiffness(k, i, j, false)
 				mat.Set(a, b, mat.At(a, b)+v)
 				mat.Set(b, a, mat.At(a, b))
 				if ok, _ := k.IsDirichlet(n.X); ok {

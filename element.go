@@ -19,10 +19,10 @@ type Element interface {
 	// IntegrateStiffness returns the result of the integration terms of the
 	// weak form of the differential equation that include/depend on u(x) (the
 	// solution or dependent variable).
-	IntegrateStiffness(k Kernel, wNode, uNode int) float64
+	IntegrateStiffness(k Kernel, wNode, uNode int, skipBoundary bool) float64
 	// IntegrateForce returns the result of the integration terms of the weak
 	// form of the differential equation that do *not* include/depend on u(x).
-	IntegrateForce(k Kernel, wNode int) float64
+	IntegrateForce(k Kernel, wNode int, skipBoundary bool) float64
 	// Bounds returns a hyper-cubic bounding box defined by low and up values
 	// in each dimension.
 	Bounds() (low, up []float64)
@@ -192,12 +192,20 @@ func (e *Element1D) Coord(x, refx []float64) []float64 {
 func (e *Element1D) left() float64  { return e.Nds[0].X[0] }
 func (e *Element1D) right() float64 { return e.Nds[len(e.Nds)-1].X[0] }
 
-func (e *Element1D) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
-	return e.integrateVol(k, wNode, uNode) + e.integrateBoundary(k, wNode, uNode)
+func (e *Element1D) IntegrateStiffness(k Kernel, wNode, uNode int, skipBoundary bool) float64 {
+	I := e.integrateVol(k, wNode, uNode)
+	if !skipBoundary {
+		I += e.integrateBoundary(k, wNode, uNode)
+	}
+	return I
 }
 
-func (e *Element1D) IntegrateForce(k Kernel, wNode int) float64 {
-	return e.integrateVol(k, wNode, -1) + e.integrateBoundary(k, wNode, -1)
+func (e *Element1D) IntegrateForce(k Kernel, wNode int, skipBoundary bool) float64 {
+	I := e.integrateVol(k, wNode, -1)
+	if !skipBoundary {
+		I += e.integrateBoundary(k, wNode, -1)
+	}
+	return I
 }
 
 var refLeft = []float64{-1}
@@ -388,12 +396,20 @@ func (e *ElementND) Coord(x, refx []float64) []float64 {
 	return x
 }
 
-func (e *ElementND) IntegrateStiffness(k Kernel, wNode, uNode int) float64 {
-	return e.integrateVol(k, wNode, uNode) + e.integrateBoundary(k, wNode, uNode)
+func (e *ElementND) IntegrateStiffness(k Kernel, wNode, uNode int, skipBoundary bool) float64 {
+	I := e.integrateVol(k, wNode, uNode)
+	if !skipBoundary {
+		I += e.integrateBoundary(k, wNode, uNode)
+	}
+	return I
 }
 
-func (e *ElementND) IntegrateForce(k Kernel, wNode int) float64 {
-	return e.integrateVol(k, wNode, -1) + e.integrateBoundary(k, wNode, -1)
+func (e *ElementND) IntegrateForce(k Kernel, wNode int, skipBoundary bool) float64 {
+	I := e.integrateVol(k, wNode, -1)
+	if !skipBoundary {
+		I += e.integrateBoundary(k, wNode, -1)
+	}
+	return I
 }
 
 func (e *ElementND) integrateBoundary(k Kernel, wNode, uNode int) float64 {
@@ -584,7 +600,7 @@ func faceArea(fixedDim int, jac *mat64.Dense) float64 {
 			}
 			ii++
 		}
-		d := mat64.Det(subjac)
+		d := det(subjac)
 		tot += d * d
 	}
 	return math.Sqrt(tot)
