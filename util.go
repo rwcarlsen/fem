@@ -185,3 +185,15 @@ func permute(skip func([]int) bool, dimensions []int, prefix []int) [][]int {
 	}
 	return set
 }
+
+func pow(a, b int) int {
+	if a == 1 || b == 0 {
+		return 1
+	}
+
+	v := 1
+	for i := 0; i < b; i++ {
+		v *= a
+	}
+	return v
+}

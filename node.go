@@ -206,18 +206,6 @@ func NewLagrangeND(order, index int) *LagrangeND {
 	return nodecache[key]
 }
 
-func pow(a, b int) int {
-	if a == 1 || b == 0 {
-		return 1
-	}
-
-	v := 1
-	for i := 0; i < b; i++ {
-		v *= a
-	}
-	return v
-}
-
 func (fn *LagrangeND) init(ndim int) {
 	if len(fn.xindices) != ndim {
 		n := fn.Order + 1
