@@ -299,18 +299,45 @@ func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
 	}
 }
 
+type ElementCache struct {
+	// npoints x ndim
+	Xs [][]float64
+	// npoints x ndim
+	Derivs [][]float64
+	// ndim x ndim
+	Mat *mat64.Dense
+	// ndim
+	RefXs []float64
+	//
+	Pars *KernelParams
+}
+
+func NewElementCache() *ElementCache { return &ElementCache{} }
+
+func (c *ElementCache) Init(ndim int, npoints int) {
+	if c.Xs != nil {
+		return
+	}
+	c.Xs = make([][]float64, npoints)
+	c.Derivs = make([][]float64, npoints)
+	for i := range c.Xs {
+		c.Xs[i] = make([]float64, ndim)
+		c.Derivs[i] = make([]float64, ndim)
+	}
+
+	c.RefXs = make([]float64, ndim)
+	c.Mat = mat64.NewDense(ndim, ndim, nil)
+	c.Pars = &KernelParams{GradW: make([]float64, ndim), GradU: make([]float64, ndim)}
+}
+
 type ElementND struct {
 	Nds   []*Node
 	Order int
 	NDim  int
 	Conv  Converter
-	// the following variables cache values for reuse
-	tmpXs     [][]float64
-	tmpDerivs [][]float64
-	tmpMat    *mat64.Dense
-	low, up   []float64
-	refxs     []float64
-	pars      *KernelParams
+	Cache *ElementCache
+	// ndim
+	low, up []float64
 }
 
 // NewElementND creates a new N-dimensional lagrange brick element (i.e. line,
@@ -330,14 +357,10 @@ func NewElementND(order int, points ...[]float64) *ElementND {
 		tmpderivs[i] = make([]float64, ndim)
 	}
 	return &ElementND{
-		Nds:       nodes,
-		Order:     order,
-		NDim:      ndim,
-		Conv:      OptimConverter,
-		tmpXs:     make([][]float64, len(nodes)),
-		tmpDerivs: tmpderivs,
-		refxs:     make([]float64, ndim),
-		pars:      &KernelParams{X: make([]float64, ndim), GradW: make([]float64, ndim), GradU: make([]float64, ndim)},
+		Nds:   nodes,
+		Order: order,
+		NDim:  ndim,
+		Conv:  OptimConverter,
 	}
 }
 
@@ -359,6 +382,7 @@ func (e *ElementND) Contains(x []float64) bool {
 }
 
 func (e *ElementND) Bounds() (low, up []float64) {
+	e.initCache()
 	if e.low == nil {
 		for d := 0; d < e.NDim; d++ {
 			e.low = append(e.low, e.extreme(d, true))
@@ -441,7 +465,7 @@ func (e *ElementND) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 
 func (e *ElementND) integrateVol(k Kernel, wNode, uNode int) float64 {
 	fn := func(refxs []float64) float64 {
-		e.Coord(e.pars.X, refxs)
+		e.Coord(e.Cache.Pars.X, refxs)
 
 		jac := e.jacobian(refxs)
 		// determinant of jacobian to convert from ref element integral to
@@ -451,21 +475,21 @@ func (e *ElementND) integrateVol(k Kernel, wNode, uNode int) float64 {
 		jacdet := det(jac)
 
 		var w, u *Node = e.Nds[wNode], nil
-		w.WeightDeriv(refxs, e.pars.GradW)
-		ConvertDeriv(jac, e.pars.GradW, e.refxs)
-		e.pars.W = w.Weight(refxs)
+		w.WeightDeriv(refxs, e.Cache.Pars.GradW)
+		ConvertDeriv(jac, e.Cache.Pars.GradW)
+		e.Cache.Pars.W = w.Weight(refxs)
 		if uNode < 0 {
-			e.pars.U = 0
-			for i := range e.pars.GradU {
-				e.pars.GradU[i] = 0
+			e.Cache.Pars.U = 0
+			for i := range e.Cache.Pars.GradU {
+				e.Cache.Pars.GradU[i] = 0
 			}
-			return jacdet * k.VolInt(e.pars)
+			return jacdet * k.VolInt(e.Cache.Pars)
 		}
 		u = e.Nds[uNode]
-		e.pars.U = u.Value(refxs)
-		u.ValueDeriv(refxs, e.pars.GradU)
-		ConvertDeriv(jac, e.pars.GradU, refxs)
-		return jacdet * k.VolIntU(e.pars)
+		e.Cache.Pars.U = u.Value(refxs)
+		u.ValueDeriv(refxs, e.Cache.Pars.GradU)
+		ConvertDeriv(jac, e.Cache.Pars.GradU)
+		return jacdet * k.VolIntU(e.Cache.Pars)
 	}
 	nquadpoints := int(math.Ceil((float64(e.Order) + 1) / 2))
 	xs := make([]float64, nquadpoints)
@@ -473,26 +497,31 @@ func (e *ElementND) integrateVol(k Kernel, wNode, uNode int) float64 {
 	return QuadLegendre(e.NDim, fn, -1, 1, nquadpoints, xs, weights)
 }
 
-func (e *ElementND) jacobian(refxs []float64) *mat64.Dense {
-	if e.tmpMat == nil {
-		e.tmpMat = mat64.NewDense(e.NDim, e.NDim, nil)
+func (e *ElementND) initCache() {
+	if e.Cache == nil {
+		e.Cache = NewElementCache()
 	}
+	e.Cache.Init(e.NDim, len(e.Nds))
+}
+
+func (e *ElementND) jacobian(refxs []float64) *mat64.Dense {
+	e.initCache()
 
 	for i, n := range e.Nds {
-		n.ShapeFunc.Deriv(refxs, e.tmpDerivs[i])
-		e.tmpXs[i] = n.X
+		n.ShapeFunc.Deriv(refxs, e.Cache.Derivs[i])
+		e.Cache.Xs[i] = n.X
 	}
 
 	for i := 0; i < e.NDim; i++ {
 		for j := 0; j < e.NDim; j++ {
 			tot := 0.0
 			for n := range e.Nds {
-				tot += e.tmpDerivs[n][i] * e.tmpXs[n][j]
+				tot += e.Cache.Derivs[n][i] * e.Cache.Xs[n][j]
 			}
-			e.tmpMat.Set(i, j, tot)
+			e.Cache.Mat.Set(i, j, tot)
 		}
 	}
-	return e.tmpMat
+	return e.Cache.Mat
 }
 
 type FaceIntegrator struct {
@@ -524,7 +553,7 @@ func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
 	pars := &KernelParams{}
 	pars.X = fi.Elem.Coord(pars.X, refxs)
 	pars.GradW = fi.W.WeightDeriv(refxs, pars.GradW)
-	ConvertDeriv(jac, pars.GradW, refxs)
+	ConvertDeriv(jac, pars.GradW)
 	pars.W = fi.W.Weight(refxs)
 
 	if fi.U == nil {
@@ -534,7 +563,7 @@ func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
 	}
 	pars.U = fi.U.Value(refxs)
 	pars.GradU = fi.U.ValueDeriv(refxs, pars.GradU)
-	ConvertDeriv(jac, pars.GradU, refxs)
+	ConvertDeriv(jac, pars.GradU)
 	return fi.K.BoundaryIntU(pars) * jacdet
 }
 
@@ -542,9 +571,12 @@ func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
 // coordinates) to dN/dx and dN/dy (derivatives w.r.t. the real coordinates).
 // This is used to convert the GradU and GradW terms to be the correct values
 // when building the stiffness matrix.
-func ConvertDeriv(jac *mat64.Dense, refgradu []float64, refxs []float64) {
+func ConvertDeriv(jac *mat64.Dense, refgradu []float64) {
 	ndim, _ := jac.Dims()
-	if ndim == 2 {
+	switch ndim {
+	case 1:
+		refgradu[0] /= jac.At(0, 0)
+	case 2:
 		// fastpath for 2 dimensions
 		a := jac.At(0, 0)
 		b := jac.At(0, 1)
@@ -555,7 +587,7 @@ func ConvertDeriv(jac *mat64.Dense, refgradu []float64, refxs []float64) {
 		s2 := invdet * (-c*refgradu[0] + a*refgradu[1])
 		refgradu[0] = s1
 		refgradu[1] = s2
-	} else if ndim == 3 {
+	case 3:
 		a := jac.At(0, 0)
 		b := jac.At(0, 1)
 		c := jac.At(0, 2)
@@ -574,7 +606,7 @@ func ConvertDeriv(jac *mat64.Dense, refgradu []float64, refxs []float64) {
 		refgradu[0] = s1
 		refgradu[1] = s2
 		refgradu[2] = s3
-	} else {
+	default:
 		var soln mat64.Vector
 		soln.SolveVec(jac, mat64.NewVector(ndim, refgradu))
 		for i := range refgradu {
