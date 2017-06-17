@@ -272,10 +272,8 @@ func (fn LagrangeND) Deriv(refx, deriv []float64) []float64 {
 	for i := 0; i < n; i++ {
 		x0 := fn.ordermults[i]
 		for d, xx := range refx {
-			xindex := fn.xindices[d]
-			currpos := fn.currpos[d]
-
-			if i != currpos {
+			if i != fn.currpos[d] {
+				xindex := fn.xindices[d]
 				a := 1 / (xindex - x0)
 				term := xx - x0
 				fn.upart[d] = a * term

@@ -49,15 +49,29 @@ func QuadLegendre(ndim int, f func([]float64) float64, min, max float64, n int, 
 }
 
 func det(m *mat64.Dense) float64 {
-	ndim, _ := m.Dims()
-	if ndim == 2 {
+	switch ndim, _ := m.Dims(); ndim {
+	case 1:
+		return m.At(0, 0)
+	case 2:
 		a := m.At(0, 0)
 		b := m.At(0, 1)
 		c := m.At(1, 0)
 		d := m.At(1, 1)
 		return (a*d - b*c)
+	case 3:
+		a := m.At(0, 0)
+		b := m.At(0, 1)
+		c := m.At(0, 2)
+		d := m.At(1, 0)
+		e := m.At(1, 1)
+		f := m.At(1, 2)
+		g := m.At(2, 0)
+		h := m.At(2, 1)
+		i := m.At(2, 2)
+		return (a*e*i - a*f*h - b*d*i + b*f*g + c*d*h - c*e*g)
+	default:
+		return mat64.Det(m)
 	}
-	return mat64.Det(m)
 }
 
 func absInt(v int) int {
