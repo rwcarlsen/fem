@@ -89,7 +89,7 @@ func (b *Box) contains(e Element) bool {
 }
 
 func (b *Box) split(elemTarget, nsplit int) {
-	if len(b.Elems) <= elemTarget {
+	if len(b.Elems) <= elemTarget*pow(nsplit, len(b.Low))/2 {
 		return
 	}
 

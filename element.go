@@ -555,6 +555,25 @@ func ConvertDeriv(jac *mat64.Dense, refgradu []float64, refxs []float64) {
 		s2 := invdet * (-c*refgradu[0] + a*refgradu[1])
 		refgradu[0] = s1
 		refgradu[1] = s2
+	} else if ndim == 3 {
+		a := jac.At(0, 0)
+		b := jac.At(0, 1)
+		c := jac.At(0, 2)
+		d := jac.At(1, 0)
+		e := jac.At(1, 1)
+		f := jac.At(1, 2)
+		g := jac.At(2, 0)
+		h := jac.At(2, 1)
+		i := jac.At(2, 2)
+
+		invdet := 1 / (a*e*i - a*f*h - b*d*i + b*f*g + c*d*h - c*e*g)
+
+		s1 := invdet * ((e*i-f*h)*refgradu[0] + (c*h-b*i)*refgradu[1] + (b*f-c*e)*refgradu[2])
+		s2 := invdet * ((f*g-d*i)*refgradu[0] + (a*i-c*g)*refgradu[1] + (c*d-a*f)*refgradu[2])
+		s3 := invdet * ((d*h-e*g)*refgradu[0] + (b*g-a*h)*refgradu[1] + (a*e-b*d)*refgradu[2])
+		refgradu[0] = s1
+		refgradu[1] = s2
+		refgradu[2] = s3
 	} else {
 		var soln mat64.Vector
 		soln.SolveVec(jac, mat64.NewVector(ndim, refgradu))
