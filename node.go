@@ -192,10 +192,13 @@ type LagrangeND struct {
 	Safe  bool
 	// xindices stores pre-computed xindex values in the u *= (xx-x0)/(xindex-x0) shape function terms
 	xindices []float64
-	// currpos caches (fn.Index/stride)%(fn.Order+1) where stride is (fn.Order+1)^dim.
+	// currpos caches (Index/stride)%(Order+1) where stride is (Order+1)^dim.
 	currpos []int
 	// upart caches memory used for calculating (partial) derivaties
 	upart []float64
+	// ordermults[i] caches x0=(-1+float64(i)*2/Order) where i indexes the
+	// node-position related to the order (from zero to Order-1 inclusive).
+	ordermults []float64
 }
 
 var nodecache = map[struct{ order, index int }]*LagrangeND{}
@@ -224,6 +227,10 @@ func (fn *LagrangeND) init(ndim int) {
 			fn.xindices[i] = -1 + 2*float64(currpos)/float64(fn.Order)
 			stride *= n
 		}
+		fn.ordermults = make([]float64, n)
+		for i := range fn.ordermults {
+			fn.ordermults[i] = -1 + 2*float64(i)/float64(fn.Order)
+		}
 	}
 }
 
@@ -234,13 +241,12 @@ func (fn *LagrangeND) Value(refx []float64) float64 {
 
 	u := 1.0
 
-	ordermult := 2 / float64(fn.Order)
 	for d, xx := range refx {
 		xindex := fn.xindices[d]
 		currpos := fn.currpos[d]
 		for i := 0; i < n; i++ {
 			if i != currpos {
-				x0 := -1 + float64(i)*ordermult
+				x0 := fn.ordermults[i]
 				u *= (xx - x0) / (xindex - x0)
 			}
 		}
@@ -264,7 +270,7 @@ func (fn LagrangeND) Deriv(refx, deriv []float64) []float64 {
 
 	u := 1.0
 	for i := 0; i < n; i++ {
-		x0 := -1 + 2*float64(i)/float64(fn.Order)
+		x0 := fn.ordermults[i]
 		for d, xx := range refx {
 			xindex := fn.xindices[d]
 			currpos := fn.currpos[d]
