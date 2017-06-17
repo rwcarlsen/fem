@@ -332,7 +332,7 @@ func (m *Mesh) ForceVector(k Kernel) []float64 {
 				f[a] = v
 				continue
 			}
-			f[a] += elem.IntegrateForce(k, i, false)
+			f[a] += elem.IntegrateForce(k, i, m.notEdges[e])
 		}
 	}
 	return f
@@ -355,7 +355,7 @@ func (m *Mesh) StiffnessMatrix(k Kernel) *sparse.Sparse {
 				if m.Bandwidth > 0 && absInt(a-b) > m.Bandwidth {
 					continue
 				}
-				v := elem.IntegrateStiffness(k, i, j, false)
+				v := elem.IntegrateStiffness(k, i, j, m.notEdges[e])
 				mat.Set(a, b, mat.At(a, b)+v)
 				mat.Set(b, a, mat.At(a, b))
 				if ok, _ := k.IsDirichlet(n.X); ok {
