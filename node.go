@@ -211,6 +211,9 @@ func NewLagrangeND(order, index int) *LagrangeND {
 func (fn *LagrangeND) init(ndim int) {
 	if len(fn.xindices) != ndim {
 		n := fn.Order + 1
+		if fn.Index > pow(n, ndim)-1 {
+			panic("incompatible Index, Order, and dimension")
+		}
 		fn.xindices = make([]float64, ndim)
 		fn.currpos = make([]int, ndim)
 		fn.upart = make([]float64, ndim)
@@ -227,9 +230,6 @@ func (fn *LagrangeND) init(ndim int) {
 func (fn *LagrangeND) Value(refx []float64) float64 {
 	ndim := len(refx)
 	n := fn.Order + 1
-	if fn.Safe && fn.Index > pow(n, ndim)-1 {
-		panic("incompatible Index, Order, and dimension")
-	}
 	fn.init(ndim)
 
 	u := 1.0
@@ -252,9 +252,6 @@ func (fn *LagrangeND) Value(refx []float64) float64 {
 func (fn LagrangeND) Deriv(refx, deriv []float64) []float64 {
 	ndim := len(refx)
 	n := fn.Order + 1
-	if fn.Index > pow(n, ndim)-1 {
-		panic("incompatible Index, Order, and dimension")
-	}
 	fn.init(ndim)
 
 	if deriv == nil {
