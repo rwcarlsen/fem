@@ -19,7 +19,9 @@ func (n *Node) Set(u, w float64) {
 func (n *Node) Value(refx []float64) float64 {
 	return n.ShapeFunc.Value(refx) * n.U
 }
-func (n *Node) Weight(refx []float64) float64 { return n.ShapeFunc.Value(refx) * n.W }
+func (n *Node) Weight(refx []float64) float64 {
+	return n.ShapeFunc.Value(refx) * n.W
+}
 
 // ValueDeriv returns the partial derivatives (i.e. gradient) contribution to the solution of the
 // node at the given reference coordinates.  If deriv is not nil the result is stored in it and

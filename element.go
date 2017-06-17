@@ -299,37 +299,6 @@ func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
 	}
 }
 
-type ElementCache struct {
-	// npoints x ndim
-	Xs [][]float64
-	// npoints x ndim
-	Derivs [][]float64
-	// ndim x ndim
-	Mat *mat64.Dense
-	// ndim
-	RefXs []float64
-	//
-	Pars *KernelParams
-}
-
-func NewElementCache() *ElementCache { return &ElementCache{} }
-
-func (c *ElementCache) Init(ndim int, npoints int) {
-	if c.Xs != nil {
-		return
-	}
-	c.Xs = make([][]float64, npoints)
-	c.Derivs = make([][]float64, npoints)
-	for i := range c.Xs {
-		c.Xs[i] = make([]float64, ndim)
-		c.Derivs[i] = make([]float64, ndim)
-	}
-
-	c.RefXs = make([]float64, ndim)
-	c.Mat = mat64.NewDense(ndim, ndim, nil)
-	c.Pars = &KernelParams{GradW: make([]float64, ndim), GradU: make([]float64, ndim)}
-}
-
 type ElementND struct {
 	Nds   []*Node
 	Order int
@@ -522,6 +491,37 @@ func (e *ElementND) jacobian(refxs []float64) *mat64.Dense {
 		}
 	}
 	return e.Cache.Mat
+}
+
+type ElementCache struct {
+	// npoints x ndim
+	Xs [][]float64
+	// npoints x ndim
+	Derivs [][]float64
+	// ndim x ndim
+	Mat *mat64.Dense
+	// ndim
+	RefXs []float64
+	//
+	Pars *KernelParams
+}
+
+func NewElementCache() *ElementCache { return &ElementCache{} }
+
+func (c *ElementCache) Init(ndim int, npoints int) {
+	if c.Xs != nil {
+		return
+	}
+	c.Xs = make([][]float64, npoints)
+	c.Derivs = make([][]float64, npoints)
+	for i := range c.Xs {
+		c.Xs[i] = make([]float64, ndim)
+		c.Derivs[i] = make([]float64, ndim)
+	}
+
+	c.RefXs = make([]float64, ndim)
+	c.Mat = mat64.NewDense(ndim, ndim, nil)
+	c.Pars = &KernelParams{GradW: make([]float64, ndim), GradU: make([]float64, ndim)}
 }
 
 type FaceIntegrator struct {
