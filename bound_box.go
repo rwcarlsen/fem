@@ -122,7 +122,7 @@ func (b *Box) splitBox(n int) {
 	for i, comb := range combs {
 		b.children[i] = &Box{}
 		sub := b.children[i]
-		sub.Elems = make([]Element, 0, len(b.Elems))
+		sub.Elems = make([]Element, 0, len(b.Elems)/len(combs))
 		sub.Low = make([]float64, ndim)
 		sub.Up = make([]float64, ndim)
 		for dim, section := range comb {
