@@ -7,7 +7,7 @@ import (
 	"github.com/gonum/matrix/mat64"
 )
 
-func QuadLegendre(ndim int, f func([]float64) float64, min, max float64, n int, xs, weights []float64) float64 {
+func QuadLegendre(ndim int, f func([]float64, int) float64, min, max float64, n int, xs, weights []float64) float64 {
 	if n <= 0 {
 		panic("quad: non-positive number of locations")
 	} else if min > max {
@@ -15,7 +15,7 @@ func QuadLegendre(ndim int, f func([]float64) float64, min, max float64, n int, 
 	} else if min == max {
 		return 0
 	} else if ndim == 0 {
-		return f(nil)
+		return f(nil, 0)
 	}
 
 	if len(xs) != n {
@@ -37,12 +37,18 @@ func QuadLegendre(ndim int, f func([]float64) float64, min, max float64, n int, 
 	fullxs := make([]float64, ndim)
 	var integral float64
 	for _, perm := range perms {
+
+		id := 0
+		stride := 1
 		w := 1.0
 		for d, i := range perm {
+			// build unique id for permutation
+			id += stride * i
+			stride *= n
 			fullxs[d] = xs[i]
 			w *= weights[i]
 		}
-		integral += w * f(fullxs)
+		integral += w * f(fullxs, id)
 	}
 
 	return integral

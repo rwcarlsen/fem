@@ -524,6 +524,29 @@ func (c *ElementCache) Init(ndim int, npoints int) {
 	c.Pars = &KernelParams{GradW: make([]float64, ndim), GradU: make([]float64, ndim)}
 }
 
+func pointCacheId(ndim, order int, permId int, isBoundary bool, fixedDim int) {
+	maxpermid := pow(order+1, ndim)
+
+	stride := 1
+	id := stride * permId
+	stride *= maxpermid
+
+	if isBoundary {
+		id += stride * 0
+	} else {
+		id += stride * 1
+	}
+	stride *= 2
+
+	if isBoundary {
+		id += stride * 0
+	} else {
+		id += stride * (fixedDim + 1)
+	}
+
+	return id
+}
+
 type FaceIntegrator struct {
 	FixedDim int
 	FixedVal float64
