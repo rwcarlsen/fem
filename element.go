@@ -10,6 +10,8 @@ import (
 	"github.com/gonum/optimize"
 )
 
+type IntegralLocationId int
+
 // Element represents an element and provides integration and bounds related
 // functionality required for approximating differential equation solutions.
 type Element interface {
@@ -30,8 +32,10 @@ type Element interface {
 	Contains(x []float64) bool
 	// Coord returns the actual coordinates in the element for the given
 	// reference coordinates (between -1 and 1).  If x is not nil, it stores
-	// the real coordinates there and returns x.
-	Coord(x, refx []float64) []float64
+	// the real coordinates there and returns x. If desired/available, a unique identifier
+	// corresponding to the given reference coordinates can be passed in ids (the first entry) to
+	// help speed up calculations.
+	Coord(x, refx []float64, id IntegralLocationId) []float64
 }
 
 // Converter represents functions that can generate/provide the (approximate)
@@ -73,11 +77,11 @@ func PermConverter(ndiv int) Converter {
 			return x
 		}
 
-		perms := Permute(nil, dims...)
+		perms := Permute(nil, nil, dims...)
 		best := make([]float64, len(x))
 		bestnorm := math.Inf(1)
 		for _, p := range perms {
-			norm := vecL2Norm(vecSub(diff, x, e.Coord(realcoords, convert(p))))
+			norm := vecL2Norm(vecSub(diff, x, e.Coord(realcoords, convert(p), -1)))
 			if norm < bestnorm {
 				best = convert(p)
 				bestnorm = norm
@@ -94,7 +98,7 @@ func OptimConverter(e Element, x []float64) ([]float64, error) {
 	diff := make([]float64, len(x))
 	p := optimize.Problem{
 		Func: func(trial []float64) float64 {
-			return vecL2Norm(vecSub(diff, x, e.Coord(realcoords, trial)))
+			return vecL2Norm(vecSub(diff, x, e.Coord(realcoords, trial, -1)))
 		},
 	}
 
@@ -113,7 +117,7 @@ func OptimConverter(e Element, x []float64) ([]float64, error) {
 func Interpolate(e Element, refx []float64) float64 {
 	u := 0.0
 	for _, n := range e.Nodes() {
-		u += n.Value(refx)
+		u += n.Value(refx, -1)
 	}
 	return u
 }
@@ -122,9 +126,9 @@ func Interpolate(e Element, refx []float64) float64 {
 // (reference coordinates [-1,1]) for each dimension - i.e. the superposition
 // of partial derivatives from each of the element nodes.
 func InterpolateDeriv(e Element, refx []float64) []float64 {
-	u := e.Nodes()[0].ValueDeriv(refx, nil)
+	u := e.Nodes()[0].ValueDeriv(refx, nil, -1)
 	for _, n := range e.Nodes()[1:] {
-		subu := n.ValueDeriv(refx, nil)
+		subu := n.ValueDeriv(refx, nil, -1)
 		for i := range subu {
 			u[i] += subu[i]
 		}
@@ -156,7 +160,7 @@ func NewElement1D(xs []float64) *Element1D {
 	for i := range xs {
 		order := len(xs) - 1
 		nodepos := []float64{xs[i]}
-		n := &Node{X: nodepos, U: 1.0, W: 1.0, ShapeFunc: NewLagrangeND(order, i)}
+		n := &Node{X: nodepos, U: 1.0, W: 1.0, ShapeFunc: &LagrangeND{Order: order, Index: i}}
 		e.Nds = append(e.Nds, n)
 	}
 
@@ -181,7 +185,7 @@ func (e *Element1D) Contains(x []float64) bool {
 	return e.left() <= xx && xx <= e.right()
 }
 
-func (e *Element1D) Coord(x, refx []float64) []float64 {
+func (e *Element1D) Coord(x, refx []float64, id IntegralLocationId) []float64 {
 	if x == nil {
 		x = make([]float64, 1)
 	}
@@ -219,37 +223,37 @@ func (e *Element1D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	}
 
 	e.pars.X[0] = e.left()
-	e.pars.W = w.Weight(refLeft)
-	e.pars.GradW = vecMult(w.WeightDeriv(refLeft, nil), e.invjacdet)
+	e.pars.W = w.Weight(refLeft, -1)
+	e.pars.GradW = vecMult(w.WeightDeriv(refLeft, nil, -1), e.invjacdet)
 	e.pars2.X[0] = e.right()
-	e.pars2.W = w.Weight(refRight)
-	e.pars2.GradW = vecMult(w.WeightDeriv(refRight, nil), e.invjacdet)
+	e.pars2.W = w.Weight(refRight, -1)
+	e.pars2.GradW = vecMult(w.WeightDeriv(refRight, nil, -1), e.invjacdet)
 
 	if uNode < 0 {
 		return k.BoundaryInt(e.pars) + k.BoundaryInt(e.pars2)
 	}
 	u = e.Nds[uNode]
-	e.pars.U = u.Value(refLeft)
-	e.pars.GradU = vecMult(u.ValueDeriv(refLeft, nil), e.invjacdet)
+	e.pars.U = u.Value(refLeft, -1)
+	e.pars.GradU = vecMult(u.ValueDeriv(refLeft, nil, -1), e.invjacdet)
 
-	e.pars2.U = u.Value(refRight)
-	e.pars2.GradU = vecMult(u.ValueDeriv(refRight, nil), e.invjacdet)
+	e.pars2.U = u.Value(refRight, -1)
+	e.pars2.GradU = vecMult(u.ValueDeriv(refRight, nil, -1), e.invjacdet)
 	return k.BoundaryIntU(e.pars) + k.BoundaryIntU(e.pars2)
 }
 
 func (e *Element1D) volQuadFunc(ref float64) float64 {
 	var w, u *Node = e.Nds[e.wNode], nil
 	e.refxs[0] = ref
-	e.pars.X = e.Coord(e.pars.X, e.refxs)
-	e.pars.W = w.Weight(e.refxs)
-	e.pars.GradW = vecMult(w.WeightDeriv(e.refxs, nil), e.invjacdet)
+	e.pars.X = e.Coord(e.pars.X, e.refxs, -1)
+	e.pars.W = w.Weight(e.refxs, -1)
+	e.pars.GradW = vecMult(w.WeightDeriv(e.refxs, nil, -1), e.invjacdet)
 
 	if e.uNode < 0 {
 		return e.kern.VolInt(e.pars)
 	}
 	u = e.Nds[e.uNode]
-	e.pars.U = u.Value(e.refxs)
-	e.pars.GradU = vecMult(u.ValueDeriv(e.refxs, nil), e.invjacdet)
+	e.pars.U = u.Value(e.refxs, -1)
+	e.pars.GradU = vecMult(u.ValueDeriv(e.refxs, nil, -1), e.invjacdet)
 	return e.kern.VolIntU(e.pars)
 }
 
@@ -269,7 +273,7 @@ func (e *Element1D) PrintFunc(w io.Writer, nsamples int) {
 	drefx := 2 / (float64(nsamples) - 1)
 	for i := 0; i < nsamples; i++ {
 		refx := []float64{-1 + float64(i)*drefx}
-		x := e.Coord(nil, refx)[0]
+		x := e.Coord(nil, refx, -1)[0]
 
 		v := Interpolate(e, refx)
 		d := InterpolateDeriv(e, refx)
@@ -286,13 +290,13 @@ func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
 	drefx := 2 / (float64(nsamples) - 1)
 	for i := 0; i < nsamples; i++ {
 		refx := []float64{-1 + float64(i)*drefx}
-		x := e.Coord(nil, refx)[0]
+		x := e.Coord(nil, refx, -1)[0]
 		fmt.Fprintf(w, "%v", x)
 		for _, n := range e.Nds {
 			if x < e.left() || x > e.right() {
 				fmt.Fprintf(w, "\t0\t0")
 			} else {
-				fmt.Fprintf(w, "\t%v\t%v", n.Value(refx), n.ValueDeriv(refx, nil)[0])
+				fmt.Fprintf(w, "\t%v\t%v", n.Value(refx, -1), n.ValueDeriv(refx, nil, -1)[0])
 			}
 		}
 		fmt.Fprintf(w, "\n")
@@ -315,11 +319,15 @@ type ElementND struct {
 // coordinates for the nodes running left to right (increasing x) in rows
 // starting at the lowest dimension and iterating recursively towards the
 // highest dimension.
-func NewElementND(order int, points ...[]float64) *ElementND {
+func NewElementND(order int, cache LagrangeNDCache, points ...[]float64) *ElementND {
 	ndim := len(points[0])
 	nodes := make([]*Node, len(points))
 	for i, x := range points {
-		nodes[i] = &Node{X: x, U: 1.0, W: 1.0, ShapeFunc: NewLagrangeND(order, i)}
+		n := &LagrangeND{Order: order, Index: i}
+		if cache != nil {
+			n = cache.New(order, i)
+		}
+		nodes[i] = &Node{X: x, U: 1.0, W: 1.0, ShapeFunc: n}
 	}
 	tmpderivs := make([][]float64, len(nodes))
 	for i := range tmpderivs {
@@ -374,17 +382,20 @@ func (e *ElementND) extreme(coord int, less bool) float64 {
 	return extreme
 }
 
-func (e *ElementND) Coord(x, refx []float64) []float64 {
+func (e *ElementND) Coord(x, refx []float64, id IntegralLocationId) []float64 {
 	if x == nil {
 		x = make([]float64, e.NDim)
+	} else {
+		for i := range x {
+			x[i] = 0
+		}
 	}
 
-	for i := 0; i < e.NDim; i++ {
-		tot := 0.0
-		for _, n := range e.Nds {
-			tot += n.ShapeFunc.Value(refx) * n.X[i]
+	for _, n := range e.Nds {
+		val := n.ShapeFunc.Value(refx, id)
+		for i := 0; i < e.NDim; i++ {
+			x[i] += val * n.X[i]
 		}
-		x[i] = tot
 	}
 	return x
 }
@@ -406,10 +417,12 @@ func (e *ElementND) IntegrateForce(k Kernel, wNode int, skipBoundary bool) float
 }
 
 func (e *ElementND) integrateBoundary(k Kernel, wNode, uNode int) float64 {
+	locid := IntegralLocationId(e.nquadpoints())
 	fi := &FaceIntegrator{
 		Elem: e,
 		W:    e.Nds[wNode],
 		K:    k,
+		Loc:  &locid,
 	}
 
 	if uNode >= 0 {
@@ -417,7 +430,7 @@ func (e *ElementND) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	}
 
 	bound := 0.0
-	nquadpoints := int(math.Ceil((float64(e.Order) + 1) / 2))
+	nquadpoints := e.nquadpointsdim()
 	xs := make([]float64, nquadpoints)
 	weights := make([]float64, nquadpoints)
 	for d := 0; d < e.NDim; d++ {
@@ -432,11 +445,25 @@ func (e *ElementND) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	return bound
 }
 
-func (e *ElementND) integrateVol(k Kernel, wNode, uNode int) float64 {
-	fn := func(refxs []float64) float64 {
-		e.Coord(e.Cache.Pars.X, refxs)
+func (e *ElementND) nquadpoints() int {
+	return pow(e.nquadpointsdim(), e.NDim)
+}
 
-		jac := e.jacobian(refxs)
+func (e *ElementND) nquadpointsall() int {
+	return e.nquadpoints() + 2*e.NDim*pow(e.nquadpointsdim(), e.NDim-1)
+}
+
+func (e *ElementND) nquadpointsdim() int {
+	return int(math.Ceil((float64(e.Order) + 1) / 2))
+}
+
+func (e *ElementND) integrateVol(k Kernel, wNode, uNode int) float64 {
+	var locid IntegralLocationId
+
+	fn := func(refxs []float64) float64 {
+		e.Coord(e.Cache.Pars.X, refxs, locid)
+
+		jac := e.jacobian(refxs, locid)
 		// determinant of jacobian to convert from ref element integral to
 		// real coord integral:
 		//     J = | dx/de  dy/de |
@@ -444,53 +471,64 @@ func (e *ElementND) integrateVol(k Kernel, wNode, uNode int) float64 {
 		jacdet := det(jac)
 
 		var w, u *Node = e.Nds[wNode], nil
-		w.WeightDeriv(refxs, e.Cache.Pars.GradW)
+		e.Cache.Pars.W = w.Weight(refxs, locid)
+		w.WeightDeriv(refxs, e.Cache.Pars.GradW, locid)
 		ConvertDeriv(jac, e.Cache.Pars.GradW)
-		e.Cache.Pars.W = w.Weight(refxs)
 		if uNode < 0 {
 			e.Cache.Pars.U = 0
 			for i := range e.Cache.Pars.GradU {
 				e.Cache.Pars.GradU[i] = 0
 			}
+			locid++
 			return jacdet * k.VolInt(e.Cache.Pars)
 		}
 		u = e.Nds[uNode]
-		e.Cache.Pars.U = u.Value(refxs)
-		u.ValueDeriv(refxs, e.Cache.Pars.GradU)
+		e.Cache.Pars.U = u.Value(refxs, locid)
+		u.ValueDeriv(refxs, e.Cache.Pars.GradU, locid)
 		ConvertDeriv(jac, e.Cache.Pars.GradU)
+
+		locid++
 		return jacdet * k.VolIntU(e.Cache.Pars)
 	}
-	nquadpoints := int(math.Ceil((float64(e.Order) + 1) / 2))
+	nquadpoints := e.nquadpointsdim()
 	xs := make([]float64, nquadpoints)
 	weights := make([]float64, nquadpoints)
-	return QuadLegendre(e.NDim, fn, -1, 1, nquadpoints, xs, weights)
+	integral := QuadLegendre(e.NDim, fn, -1, 1, nquadpoints, xs, weights)
+	return integral
 }
 
 func (e *ElementND) initCache() {
 	if e.Cache == nil {
 		e.Cache = NewElementCache()
 	}
-	e.Cache.Init(e.NDim, len(e.Nds))
+	e.Cache.Init(e.NDim, len(e.Nds), e.nquadpointsall())
 }
 
-func (e *ElementND) jacobian(refxs []float64) *mat64.Dense {
+func (e *ElementND) jacobian(refxs []float64, id IntegralLocationId) *mat64.Dense {
 	e.initCache()
 
-	for i, n := range e.Nds {
-		n.ShapeFunc.Deriv(refxs, e.Cache.Derivs[i])
-		e.Cache.Xs[i] = n.X
+	if e.Cache.HaveJac[id] {
+		return e.Cache.Jacs[id]
 	}
+	e.Cache.HaveJac[id] = true
 
-	for i := 0; i < e.NDim; i++ {
-		for j := 0; j < e.NDim; j++ {
-			tot := 0.0
-			for n := range e.Nds {
-				tot += e.Cache.Derivs[n][i] * e.Cache.Xs[n][j]
+	mat := e.Cache.Jacs[id]
+	data := mat.RawMatrix().Data
+	for i := range data {
+		data[i] = 0
+	}
+	for ni, n := range e.Nds {
+		deriv := e.Cache.Derivs[ni]
+		n.ShapeFunc.Deriv(refxs, deriv, id)
+		for i := 0; i < e.NDim; i++ {
+			dd := deriv[i]
+			index := e.NDim * i
+			for j := 0; j < e.NDim; j++ {
+				data[index+j] += dd * n.X[j]
 			}
-			e.Cache.Mat.Set(i, j, tot)
 		}
 	}
-	return e.Cache.Mat
+	return mat
 }
 
 type ElementCache struct {
@@ -500,15 +538,17 @@ type ElementCache struct {
 	Derivs [][]float64
 	// ndim x ndim
 	Mat *mat64.Dense
+	// ndim x ndim
+	Jacs    []*mat64.Dense
+	HaveJac []bool
 	// ndim
 	RefXs []float64
-	//
-	Pars *KernelParams
+	Pars  *KernelParams
 }
 
 func NewElementCache() *ElementCache { return &ElementCache{} }
 
-func (c *ElementCache) Init(ndim int, npoints int) {
+func (c *ElementCache) Init(ndim int, npoints int, nquadpoints int) {
 	if c.Xs != nil {
 		return
 	}
@@ -517,6 +557,12 @@ func (c *ElementCache) Init(ndim int, npoints int) {
 	for i := range c.Xs {
 		c.Xs[i] = make([]float64, ndim)
 		c.Derivs[i] = make([]float64, ndim)
+	}
+
+	c.HaveJac = make([]bool, nquadpoints)
+	c.Jacs = make([]*mat64.Dense, nquadpoints)
+	for i := range c.Jacs {
+		c.Jacs[i] = mat64.NewDense(ndim, ndim, nil)
 	}
 
 	c.RefXs = make([]float64, ndim)
@@ -530,9 +576,11 @@ type FaceIntegrator struct {
 	Elem     *ElementND
 	U, W     *Node
 	K        Kernel
+	Loc      *IntegralLocationId
 }
 
 func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
+	loc := *fi.Loc
 	ndim := len(partialrefxs) + 1
 	refxs := make([]float64, ndim)
 
@@ -547,23 +595,25 @@ func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
 		}
 	}
 
-	jac := fi.Elem.jacobian(refxs)
+	jac := fi.Elem.jacobian(refxs, loc)
 	jacdet := faceArea(fi.FixedDim, jac)
 
 	pars := &KernelParams{}
-	pars.X = fi.Elem.Coord(pars.X, refxs)
-	pars.GradW = fi.W.WeightDeriv(refxs, pars.GradW)
+	pars.X = fi.Elem.Coord(pars.X, refxs, loc)
+	pars.GradW = fi.W.WeightDeriv(refxs, pars.GradW, loc)
 	ConvertDeriv(jac, pars.GradW)
-	pars.W = fi.W.Weight(refxs)
+	pars.W = fi.W.Weight(refxs, loc)
 
 	if fi.U == nil {
 		// TODO: when we start caching KernelParams object, we will need to
 		// zero out U and GradU here
+		*fi.Loc++
 		return fi.K.BoundaryInt(pars) * jacdet
 	}
-	pars.U = fi.U.Value(refxs)
-	pars.GradU = fi.U.ValueDeriv(refxs, pars.GradU)
+	pars.U = fi.U.Value(refxs, loc)
+	pars.GradU = fi.U.ValueDeriv(refxs, pars.GradU, loc)
 	ConvertDeriv(jac, pars.GradU)
+	*fi.Loc++
 	return fi.K.BoundaryIntU(pars) * jacdet
 }
 

@@ -32,11 +32,11 @@ func QuadLegendre(ndim int, f func([]float64) float64, min, max float64, n int, 
 	for i := range dims {
 		dims[i] = n
 	}
-	perms := Permute(nil, dims...)
 
 	fullxs := make([]float64, ndim)
 	var integral float64
-	for _, perm := range perms {
+
+	apply := func(perm []int) {
 		w := 1.0
 		for d, i := range perm {
 			fullxs[d] = xs[i]
@@ -44,6 +44,7 @@ func QuadLegendre(ndim int, f func([]float64) float64, min, max float64, n int, 
 		}
 		integral += w * f(fullxs)
 	}
+	Permute(nil, apply, dims...)
 
 	return integral
 }
@@ -174,16 +175,20 @@ func vecSub(dst, a, b []float64) []float64 {
 	return dst
 }
 
-func Permute(skip func([]int) bool, dimensions ...int) [][]int {
-	return permute(skip, dimensions, []int{})
+func Permute(skip func([]int) bool, apply func([]int), dimensions ...int) [][]int {
+	return permute(skip, apply, dimensions, []int{})
 }
 
-func permute(skip func([]int) bool, dimensions []int, prefix []int) [][]int {
+func permute(skip func([]int) bool, apply func([]int), dimensions []int, prefix []int) [][]int {
 	set := make([][]int, 0)
 
 	if len(dimensions) == 1 {
 		for i := 0; i < dimensions[0]; i++ {
 			val := append(append([]int{}, prefix...), i)
+			if apply != nil {
+				apply(val)
+				continue
+			}
 			set = append(set, val)
 		}
 		return set
@@ -195,7 +200,15 @@ func permute(skip func([]int) bool, dimensions []int, prefix []int) [][]int {
 		if skip != nil && skip(newprefix) {
 			continue
 		}
-		set = append(set, permute(skip, dimensions[1:], newprefix)...)
+
+		moresets := permute(skip, apply, dimensions[1:], newprefix)
+		if apply != nil {
+			for _, perm := range moresets {
+				apply(perm)
+			}
+			continue
+		}
+		set = append(set, moresets...)
 	}
 	return set
 }

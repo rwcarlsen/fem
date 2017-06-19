@@ -31,7 +31,7 @@ func TestLagrange1D_Value(t *testing.T) {
 
 	for i, test := range tests {
 		fn := Lagrange1D{test.Index, test.Order}
-		y := fn.Value([]float64{test.SampleX})
+		y := fn.Value([]float64{test.SampleX}, -1)
 		if y != test.Want {
 			t.Errorf("FAIL case %v (order=%v, index=%v): f(%v)=%v, want %v", i+1, test.Order, test.Index, test.SampleX, y, test.Want)
 		} else {
@@ -84,7 +84,7 @@ func TestLagrange1D_Deriv(t *testing.T) {
 
 	for i, test := range tests {
 		fn := Lagrange1D{test.Index, test.Order}
-		y := fn.Deriv([]float64{test.SampleX}, nil)[0]
+		y := fn.Deriv([]float64{test.SampleX}, nil, -1)[0]
 		if y != test.Want {
 			t.Errorf("FAIL case %v (order=%v, index=%v): df/dx(%v)=%v, want %v", i+1, test.Order, test.Index, test.SampleX, y, test.Want)
 		} else {
@@ -135,7 +135,7 @@ func TestLagrange2D_Value(t *testing.T) {
 
 	for i, test := range tests {
 		n := Lagrange2D{Order: test.Order, Index: test.Index}
-		v := n.Value(test.SampleX)
+		v := n.Value(test.SampleX, -1)
 		if v != test.Want {
 			t.Errorf("    FAIL case %2v (order %v, index %v): f(%2v) = %4v, want %2v", i+1, test.Order, test.Index, test.SampleX, v, test.Want)
 		} else {
@@ -218,7 +218,7 @@ func TestLagrange2D_Deriv(t *testing.T) {
 
 	for i, test := range tests {
 		n := Lagrange2D{Order: test.Order, Index: test.Index}
-		d := n.Deriv(test.SampleX, nil)
+		d := n.Deriv(test.SampleX, nil, -1)
 		dx, dy := d[0], d[1]
 		if dx != test.Want[0] || dy != test.Want[1] {
 			t.Errorf("    FAIL case %2v (order %v, index %v): f(%2v) = %5v, want %5v", i+1, test.Order, test.Index, test.SampleX, d, test.Want)
@@ -242,7 +242,7 @@ func TestLagrange2D_PrintVal(t *testing.T) {
 			y := -1 + 2*float64(j)/float64(nsamples-1)
 			fmt.Printf("%v\t%v", x, y)
 			for _, n := range nodes {
-				val := n.Value([]float64{x, y})
+				val := n.Value([]float64{x, y}, -1)
 				fmt.Printf("\t%v", val)
 			}
 			fmt.Println()
@@ -311,7 +311,7 @@ func TestLagrangeND_Value(t *testing.T) {
 
 	for i, test := range tests {
 		n := LagrangeND{Order: test.Order, Index: test.Index}
-		v := n.Value(test.SampleX)
+		v := n.Value(test.SampleX, -1)
 		if v != test.Want {
 			t.Errorf("    FAIL case %2v (order %v, index %v): f(%2v) = %4v, want %2v", i+1, test.Order, test.Index, test.SampleX, v, test.Want)
 		} else {
@@ -394,7 +394,7 @@ func TestLagrangeND_Deriv(t *testing.T) {
 
 	for i, test := range tests {
 		n := LagrangeND{Order: test.Order, Index: test.Index}
-		d := n.Deriv(test.SampleX, nil)
+		d := n.Deriv(test.SampleX, nil, -1)
 		dx, dy := d[0], d[1]
 		if dx != test.Want[0] || dy != test.Want[1] {
 			t.Errorf("    FAIL case %2v (order %v, index %v): f(%2v) = %5v, want %5v", i+1, test.Order, test.Index, test.SampleX, d, test.Want)

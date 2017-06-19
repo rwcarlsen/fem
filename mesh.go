@@ -112,15 +112,16 @@ func NewMeshSimple1D(order int, nodePos []float64) (*Mesh, error) {
 	}
 
 	nElems := (len(nodePos) - 1) / order
-	cache := NewElementCache()
+	shapecache := LagrangeNDCache{}
+	elemcache := NewElementCache()
 	for i := 0; i < nElems; i++ {
 		xs := make([][]float64, order+1)
 		for j := 0; j < order+1; j++ {
 			xs[j] = []float64{nodePos[i*order+j]}
 		}
-		e := NewElementND(order, xs...)
+		e := NewElementND(order, shapecache, xs...)
 		e.Conv = StructuredConverter
-		e.Cache = cache
+		e.Cache = elemcache
 		m.AddElement(e, i > 0 && i < nElems-1)
 	}
 	return m, nil
@@ -141,7 +142,8 @@ func NewMeshSimple2D(order int, xs, ys []float64) (*Mesh, error) {
 
 	xDivs := (len(xs) - 1) / order
 	yDivs := (len(ys) - 1) / order
-	cache := NewElementCache()
+	shapecache := LagrangeNDCache{}
+	elemcache := NewElementCache()
 	for i := 0; i < xDivs; i++ {
 		for j := 0; j < yDivs; j++ {
 			points := make([][]float64, 0, n*n)
@@ -151,9 +153,9 @@ func NewMeshSimple2D(order int, xs, ys []float64) (*Mesh, error) {
 				}
 			}
 			edge := i == 0 || i == xDivs-1 || j == 0 || j == yDivs-1
-			e := NewElementND(order, points...)
+			e := NewElementND(order, shapecache, points...)
 			e.Conv = StructuredConverter
-			e.Cache = cache
+			e.Cache = elemcache
 			m.AddElement(e, !edge)
 		}
 	}
@@ -173,7 +175,8 @@ func NewMeshSimple3D(order int, xs, ys, zs []float64) (*Mesh, error) {
 	xDivs := (len(xs) - 1) / order
 	yDivs := (len(ys) - 1) / order
 	zDivs := (len(zs) - 1) / order
-	cache := NewElementCache()
+	elemcache := NewElementCache()
+	shapecache := LagrangeNDCache{}
 	for i := 0; i < xDivs; i++ {
 		for j := 0; j < yDivs; j++ {
 			for k := 0; k < zDivs; k++ {
@@ -185,9 +188,9 @@ func NewMeshSimple3D(order int, xs, ys, zs []float64) (*Mesh, error) {
 						}
 					}
 				}
-				e := NewElementND(order, points...)
+				e := NewElementND(order, shapecache, points...)
 				e.Conv = StructuredConverter
-				e.Cache = cache
+				e.Cache = elemcache
 				edge := i == 0 || i == xDivs-1 || j == 0 || j == yDivs-1 || k == 0 || k == zDivs-1
 				m.AddElement(e, !edge)
 			}
