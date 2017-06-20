@@ -19,11 +19,11 @@ import (
 
 var printmats = flag.Bool("print", false, "print stiffness and force matrices")
 var ndivs = flag.Int("ndivs", 5, "number of divisions per dimension in the structured mesh")
-var order = flag.Int("order", 2, "lagrange shape function order")
+var order = flag.Int("order", 1, "lagrange shape function order")
 var iter = flag.Int("iter", 1000, "number of iterations for solve (default=direct)")
 var usertol = flag.Float64("tol", 1e-5, "l2 norm consecutive iterative soln diff threshold")
-var nsoln = flag.Int("nsol", 10, "number of uniformly distributed points to sample+print solution over")
-var solver = flag.String("solver", "gaussian", "solver type (gaussian, denselu, cg)")
+var nsoln = flag.Int("nsol", 4, "number of uniformly distributed points to sample+print solution over")
+var solver = flag.String("solver", "cg", "solver type (gaussian, denselu, cg)")
 var dim = flag.Int("dim", 1, "dimesionality of sample problem - either 1 or 2")
 
 var plot = flag.String("plot", "", "'svg' to create svg plot with gnuplot")

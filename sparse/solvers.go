@@ -146,6 +146,7 @@ func NewCholesky(L, A Matrix) *Cholesky {
 		}
 	}
 
+	// zero out above the diagonal
 	for i := 0; i < size; i++ {
 		for j := range L.NonzeroCols(i) {
 			if j > i {
