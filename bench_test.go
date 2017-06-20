@@ -34,7 +34,7 @@ func benchMeshBuildN(n int) func(b *testing.B) {
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, err := NewMeshSimple1D(order, xs)
+			_, err := NewMeshStructured(order, xs)
 			if err != nil {
 				b.Error(err)
 			}
@@ -49,7 +49,7 @@ func benchSolveN(n int) func(b *testing.B) {
 		for i := range xs {
 			xs[i] = float64(i) / float64(n)
 		}
-		mesh, err := NewMeshSimple1D(order, xs)
+		mesh, err := NewMeshStructured(order, xs)
 		if err != nil {
 			b.Error(err)
 		}
@@ -74,7 +74,7 @@ func benchInterpolateN(n int) func(b *testing.B) {
 		for i := 0; i < n+1; i++ {
 			xs[i] = float64(i) / float64(n)
 		}
-		mesh, err := NewMeshSimple1D(order, xs)
+		mesh, err := NewMeshStructured(order, xs)
 		if err != nil {
 			b.Error(err)
 		}

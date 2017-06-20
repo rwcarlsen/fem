@@ -24,10 +24,10 @@ type Element interface {
 	// IntegrateStiffness returns the result of the integration terms of the
 	// weak form of the differential equation that include/depend on u(x) (the
 	// solution or dependent variable).
-	IntegrateStiffness(k Kernel, wNode, uNode int, skipBoundary bool) float64
+	IntegrateStiffness(k Kernel, wNode, uNode int, skipOnBoundary bool) float64
 	// IntegrateForce returns the result of the integration terms of the weak
 	// form of the differential equation that do *not* include/depend on u(x).
-	IntegrateForce(k Kernel, wNode int, skipBoundary bool) float64
+	IntegrateForce(k Kernel, wNode int, skipOnBoundary bool) float64
 	// Bounds returns a hyper-cubic bounding box defined by low and up values
 	// in each dimension.
 	Bounds() (low, up []float64)
@@ -347,17 +347,17 @@ func (e *ElementND) Coord(x, refx []float64, id CoordId) []float64 {
 	return x
 }
 
-func (e *ElementND) IntegrateStiffness(k Kernel, wNode, uNode int, skipBoundary bool) float64 {
+func (e *ElementND) IntegrateStiffness(k Kernel, wNode, uNode int, skipOnBoundary bool) float64 {
 	I := e.integrateVol(k, wNode, uNode)
-	if !skipBoundary {
+	if !skipOnBoundary {
 		I += e.integrateBoundary(k, wNode, uNode)
 	}
 	return I
 }
 
-func (e *ElementND) IntegrateForce(k Kernel, wNode int, skipBoundary bool) float64 {
+func (e *ElementND) IntegrateForce(k Kernel, wNode int, skipOnBoundary bool) float64 {
 	I := e.integrateVol(k, wNode, -1)
-	if !skipBoundary {
+	if !skipOnBoundary {
 		I += e.integrateBoundary(k, wNode, -1)
 	}
 	return I

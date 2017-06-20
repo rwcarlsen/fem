@@ -52,7 +52,7 @@ func main() {
 	} else if *dim == 2 {
 		TestHeatKernel2D()
 	} else {
-		TestHeatKernel3D()
+		TestHeatKernelND(*dim)
 	}
 
 	if *memprofile != "" {
@@ -92,7 +92,7 @@ func TestHeatKernel() {
 			RightType: Neumann,
 		},
 	}
-	mesh, err := NewMeshSimple1D(*order, xs)
+	mesh, err := NewMeshStructured(*order, xs)
 	check(err)
 
 	solveProb(mesh, hc)
@@ -118,7 +118,7 @@ func TestHeatKernel2D() {
 		xs = append(xs, float64(i)/float64(*ndivs-1)*4)
 		ys = append(ys, float64(i)/float64(*ndivs-1)*4)
 	}
-	mesh, err := NewMeshSimple2D(*order, xs, ys)
+	mesh, err := NewMeshStructured(*order, xs, ys)
 	check(err)
 
 	// build kernel and boundary conditions
@@ -156,7 +156,7 @@ func TestHeatKernel2D() {
 	}
 }
 
-func TestHeatKernel3D() {
+func TestHeatKernelND(ndim int) {
 	// build mesh
 	xs := []float64{}
 	ys := []float64{}
@@ -166,7 +166,7 @@ func TestHeatKernel3D() {
 		ys = append(ys, float64(i)/float64(*ndivs-1)*4)
 		zs = append(zs, float64(i)/float64(*ndivs-1)*4)
 	}
-	mesh, err := NewMeshSimple3D(*order, xs, ys, zs)
+	mesh, err := NewMeshStructured(*order, xs, ys, zs)
 	check(err)
 
 	// build kernel and boundary conditions

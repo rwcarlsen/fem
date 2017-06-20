@@ -102,96 +102,63 @@ func (m *Mesh) AddElement(e Element, notEdge bool) error {
 	return nil
 }
 
-// NewMeshSimple1D creates a simply-connected mesh with nodes at the specified
-// points and order specifies the polynomial shape function order used in each element to
-// approximate the solution.
-func NewMeshSimple1D(order int, nodePos []float64) (*Mesh, error) {
-	m := &Mesh{Bandwidth: order, Conv: StructuredConverter}
-	if (len(nodePos)-1)%order != 0 {
-		return nil, fmt.Errorf("incompatible mesh order (%v) and dim division count (%v)", order, len(nodePos))
+// NewMeshStructured creates a structured mesh with hyper-rectangular lagrange elements of the
+// specified order using a grid of points defined by axis-perpendicular planes defined by as a
+// series of points in each dimension.  len(divs) is the number of dimensions with each dimension
+// having a slice of points defining the points at which the planes intersect the axis.
+func NewMeshStructured(order int, divs ...[]float64) (*Mesh, error) {
+	ndim := len(divs)
+	m := &Mesh{Conv: StructuredConverter}
+	nelems := 1
+	strides := make([]int, ndim) // strides for offsets into divs for section for each element
+	for i, xs := range divs {
+		if (len(xs)-1)%order != 0 {
+			return nil, fmt.Errorf("incompatible mesh order (%v) and dim division count (dim %v nx=%v)", order, i, len(xs))
+		} else if len(xs) < 2 {
+			return nil, fmt.Errorf("simple 2D mesh requires at least two divisions in each dimension")
+		}
+		strides[i] = nelems
+		nelems *= (len(xs) - 1) / order
 	}
 
-	nElems := (len(nodePos) - 1) / order
+	nnodes := pow(order+1, ndim)
+
+	indices := make([]int, ndim)
+	points := make([][]float64, nnodes)
+	// substrides for offsets into divs on top of strides for each node in an element
+	nodestrides := make([][]int, ndim)
+	stride := 1
+	for d := range nodestrides {
+		nodestrides[d] = make([]int, nnodes)
+		for i := range nodestrides[d] {
+			nodestrides[d][i] = (i / stride) % (order + 1)
+		}
+		stride *= order + 1
+	}
+
 	shapecache := LagrangeNDCache{}
 	elemcache := NewElementCache()
-	for i := 0; i < nElems; i++ {
-		xs := make([][]float64, order+1)
-		for j := 0; j < order+1; j++ {
-			xs[j] = []float64{nodePos[i*order+j]}
+
+	for count := 0; count < nelems; count++ {
+		for d, stride := range strides {
+			indices[d] = ((count / stride) % ((len(divs[d]) - 1) / order)) * order
 		}
-		e := NewElementND(order, elemcache, shapecache, xs...)
+
+		edge := false
+		for i := range points {
+			// each element needs its own slices so they aren't overwriting each other
+			points[i] = make([]float64, ndim)
+			for d, index := range indices {
+				offset := index + nodestrides[d][i]
+				if offset == 0 || offset == len(divs[d])-1 {
+					edge = true
+				}
+				points[i][d] = divs[d][offset]
+			}
+		}
+		e := NewElementND(order, elemcache, shapecache, points...)
 		e.Conv = StructuredConverter
-		m.AddElement(e, i > 0 && i < nElems-1)
-	}
-	return m, nil
-}
-
-// NewMeshSimple2D creates a structured mesh with Quad4 (bilinear quadrangles) elements covering
-// the grid of points specified by y-axis-parallel lines drawn through each x in xs and
-// x-axis-parallel points drawn through each y in ys.
-func NewMeshSimple2D(order int, xs, ys []float64) (*Mesh, error) {
-	m := &Mesh{Conv: StructuredConverter}
-	if (len(xs)-1)%order != 0 || (len(ys)-1)%order != 0 {
-		return nil, fmt.Errorf("incompatible mesh order (%v) and dim division count (nx=%v,ny=%v)", order, len(xs), len(ys))
-	} else if len(xs) < 2 || len(ys) < 2 {
-		return nil, fmt.Errorf("simple 2D mesh requires at least two x and two y points")
-	}
-
-	n := order + 1
-
-	xDivs := (len(xs) - 1) / order
-	yDivs := (len(ys) - 1) / order
-	shapecache := LagrangeNDCache{}
-	elemcache := NewElementCache()
-	for i := 0; i < xDivs; i++ {
-		for j := 0; j < yDivs; j++ {
-			points := make([][]float64, 0, n*n)
-			for yoffset := 0; yoffset < n; yoffset++ {
-				for xoffset := 0; xoffset < n; xoffset++ {
-					points = append(points, []float64{xs[i*order+xoffset], ys[j*order+yoffset]})
-				}
-			}
-			edge := i == 0 || i == xDivs-1 || j == 0 || j == yDivs-1
-			e := NewElementND(order, elemcache, shapecache, points...)
-			e.Conv = StructuredConverter
-			m.AddElement(e, !edge)
-		}
-	}
-	return m, nil
-}
-
-func NewMeshSimple3D(order int, xs, ys, zs []float64) (*Mesh, error) {
-	m := &Mesh{Conv: StructuredConverter}
-	if (len(xs)-1)%order != 0 || (len(ys)-1)%order != 0 {
-		return nil, fmt.Errorf("incompatible mesh order (%v) and dim division count (nx=%v,ny=%v)", order, len(xs), len(ys))
-	} else if len(xs) < 2 || len(ys) < 2 {
-		return nil, fmt.Errorf("simple 2D mesh requires at least two x and two y points")
-	}
-
-	n := order + 1
-
-	xDivs := (len(xs) - 1) / order
-	yDivs := (len(ys) - 1) / order
-	zDivs := (len(zs) - 1) / order
-	elemcache := NewElementCache()
-	shapecache := LagrangeNDCache{}
-	for i := 0; i < xDivs; i++ {
-		for j := 0; j < yDivs; j++ {
-			for k := 0; k < zDivs; k++ {
-				points := make([][]float64, 0, n*n*n)
-				for zoffset := 0; zoffset < n; zoffset++ {
-					for yoffset := 0; yoffset < n; yoffset++ {
-						for xoffset := 0; xoffset < n; xoffset++ {
-							points = append(points, []float64{xs[i*order+xoffset], ys[j*order+yoffset], zs[k*order+zoffset]})
-						}
-					}
-				}
-				e := NewElementND(order, elemcache, shapecache, points...)
-				e.Conv = StructuredConverter
-				edge := i == 0 || i == xDivs-1 || j == 0 || j == yDivs-1 || k == 0 || k == zDivs-1
-				m.AddElement(e, !edge)
-			}
-		}
+		m.AddElement(e, !edge)
 	}
 	return m, nil
 }
