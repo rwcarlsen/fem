@@ -158,27 +158,40 @@ func TestHeatKernel2D() {
 
 func TestHeatKernelND(ndim int) {
 	// build mesh
-	xs := []float64{}
-	ys := []float64{}
-	zs := []float64{}
-	for i := 0; i < *ndivs; i++ {
-		xs = append(xs, float64(i)/float64(*ndivs-1)*4)
-		ys = append(ys, float64(i)/float64(*ndivs-1)*4)
-		zs = append(zs, float64(i)/float64(*ndivs-1)*4)
+	divs := make([][]float64, ndim)
+
+	low := make([]float64, ndim)
+	up := make([]float64, ndim)
+	lowTypes := make([]BoundaryType, ndim)
+	upTypes := make([]BoundaryType, ndim)
+	lowVals := make([]float64, ndim)
+	upVals := make([]float64, ndim)
+	for d := range divs {
+		lowTypes[d] = Dirichlet
+		upTypes[d] = Dirichlet
+		lowVals[d] = 0
+		upVals[d] = 0
+
+		low[d] = 0
+		up[d] = 4
+
+		divs[d] = make([]float64, *ndivs)
+		for i := range divs[d] {
+			divs[d][i] = float64(i) / float64(*ndivs-1) * 4
+		}
 	}
-	mesh, err := NewMeshStructured(*order, xs, ys, zs)
+	mesh, err := NewMeshStructured(*order, divs...)
 	check(err)
 
 	// build kernel and boundary conditions
-	end := len(xs) - 1
 	boundary := &StructuredBoundary{
 		Tol:      1e-6,
-		Low:      []float64{0, 0},
-		Up:       []float64{4, 4},
-		LowTypes: []BoundaryType{Dirichlet, Dirichlet},
-		UpTypes:  []BoundaryType{Dirichlet, Dirichlet},
-		LowVals:  []float64{0, 0},
-		UpVals:   []float64{0, 0},
+		Low:      low,
+		Up:       up,
+		LowTypes: lowTypes,
+		UpTypes:  upTypes,
+		LowVals:  lowVals,
+		UpVals:   upVals,
 	}
 
 	hc := &HeatConduction{
@@ -190,9 +203,7 @@ func TestHeatKernelND(ndim int) {
 	solveProb(mesh, hc)
 
 	var buf bytes.Buffer
-	minbounds := []float64{xs[0], ys[0], zs[0]}
-	maxbounds := []float64{xs[end], ys[end], zs[end]}
-	printSolution(&buf, mesh, minbounds, maxbounds)
+	printSolution(&buf, mesh, low, up)
 
 	if *plot == "" {
 		log.Print("Solution:")
