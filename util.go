@@ -176,7 +176,7 @@ func vecSub(dst, a, b []float64) []float64 {
 }
 
 func Permute(skip func([]int) bool, apply func([]int), dimensions ...int) [][]int {
-	return permute(skip, apply, dimensions, []int{})
+	return permute(skip, apply, dimensions, make([]int, 0, len(dimensions)))
 }
 
 func permute(skip func([]int) bool, apply func([]int), dimensions []int, prefix []int) [][]int {
@@ -184,11 +184,11 @@ func permute(skip func([]int) bool, apply func([]int), dimensions []int, prefix 
 
 	if len(dimensions) == 1 {
 		for i := 0; i < dimensions[0]; i++ {
-			val := append(append([]int{}, prefix...), i)
 			if apply != nil {
-				apply(val)
+				apply(append(prefix, i))
 				continue
 			}
+			val := append(append([]int{}, prefix...), i)
 			set = append(set, val)
 		}
 		return set

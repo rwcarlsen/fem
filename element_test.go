@@ -63,7 +63,7 @@ func TestElementND_Contains(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		e := NewElementND(1, nil, test.Xs...)
+		e := NewElementND(1, nil, nil, test.Xs...)
 		t.Logf("case %v (nodes=%v):", i+1, test.Xs)
 		for j, point := range test.Points {
 			if e.Contains(point) != test.Inside[j] {
@@ -106,7 +106,7 @@ func TestElementND_Coord(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		e := NewElementND(1, nil, test.x1, test.x2, test.x3, test.x4)
+		e := NewElementND(1, nil, nil, test.x1, test.x2, test.x3, test.x4)
 		t.Logf("case %v (x1=%v, x2=%v, x3=%v, x4=%v):", i+1, test.x1, test.x2, test.x3, test.x4)
 		for j, refx := range test.RefPoints {
 			want := test.RealPoints[j]
@@ -222,7 +222,7 @@ func TestElementND_IntegrateBoundary(t *testing.T) {
 
 	for i, test := range tests {
 		ts := test
-		elem := NewElementND(1, nil, ts.X1, ts.X2, ts.X3, ts.X4)
+		elem := NewElementND(1, nil, nil, ts.X1, ts.X2, ts.X3, ts.X4)
 
 		nds := elem.Nodes()
 		nds[0].Set(test.V1, 1)

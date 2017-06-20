@@ -10,7 +10,11 @@ import (
 	"github.com/gonum/optimize"
 )
 
-type IntegralLocationId int
+// CoordId is used to represent a unique identifier for a location in the mesh.  CoordId's can be
+// chosen in any way that "works", but it is important for them to be densely packed to enable
+// efficient packing into various data structures.  A negative CoordId represents "no CoordId
+// available/used" and is ignored.
+type CoordId int
 
 // Element represents an element and provides integration and bounds related
 // functionality required for approximating differential equation solutions.
@@ -33,15 +37,21 @@ type Element interface {
 	// Coord returns the actual coordinates in the element for the given
 	// reference coordinates (between -1 and 1).  If x is not nil, it stores
 	// the real coordinates there and returns x. If desired/available, a unique identifier
-	// corresponding to the given reference coordinates can be passed in ids (the first entry) to
-	// help speed up calculations.
-	Coord(x, refx []float64, id IntegralLocationId) []float64
+	// corresponding to the given reference coordinates can be passed in id to
+	// help speed up calculations (i.e. enable the use of cached values).  If id is less than
+	// zero, it is ignored.
+	Coord(x, refx []float64, id CoordId) []float64
+	// Cache returns an element cache if available, or nil otherwise.
+	Cache() *ElementCache
 }
 
 // Converter represents functions that can generate/provide the (approximate)
 // reference coordinates for a given real coordinate on element e.
 type Converter func(e Element, x []float64) (refx []float64, err error)
 
+// StructuredConverter calculates the reference coordinates refx for the real coordinates x in
+// element e for elements in a regular, structured mesh grid.  It must NOT be used for irregular
+// or unstructured mesh elements.
 func StructuredConverter(e Element, x []float64) (refx []float64, err error) {
 	low, up := e.Bounds()
 	refx = make([]float64, len(x))
@@ -92,7 +102,7 @@ func PermConverter(ndiv int) Converter {
 }
 
 // OptimConverter performs a local optimization using vanilla algorithms (e.g.
-// gradient descent, , newton, etc.) to find the reference coordinates for x.
+// gradient descent, newton, etc.) to find the reference coordinates for x.
 func OptimConverter(e Element, x []float64) ([]float64, error) {
 	realcoords := make([]float64, len(x))
 	diff := make([]float64, len(x))
@@ -136,6 +146,50 @@ func InterpolateDeriv(e Element, refx []float64) []float64 {
 	return u
 }
 
+// Jacobian calculates the jacobian - i.e.:
+//
+//     | dx/de  dy/de  dz/de |
+//     | dx/dn  dy/dn  dz/dn |
+//     | dx/dt  dy/dt  dz/dt |
+//
+// ...the partial derivatives of the real coordinates w.r.t. the reference coordinates.  This is
+// used for things like ratio multipliers to convert integrals in the reference coordinates to
+// integrals in the real coordinates.
+func Jacobian(e Element, refxs []float64, id CoordId) *mat64.Dense {
+	ndim := len(refxs)
+	var mat *mat64.Dense
+	cache := e.Cache()
+	var deriv []float64
+	if cache != nil {
+		if cache.HaveJac[id] {
+			return cache.Jacs[id]
+		}
+		cache.HaveJac[id] = true
+		deriv = cache.SliceNDim
+
+		mat = cache.Jacs[id]
+	} else {
+		mat = mat64.NewDense(ndim, ndim, nil)
+	}
+
+	data := mat.RawMatrix().Data
+	for i := range data {
+		data[i] = 0
+	}
+
+	for _, n := range e.Nodes() {
+		deriv = n.ShapeFunc.Deriv(refxs, deriv, id)
+		for i := 0; i < ndim; i++ {
+			dd := deriv[i]
+			index := ndim * i
+			for j := 0; j < ndim; j++ {
+				data[index+j] += dd * n.X[j]
+			}
+		}
+	}
+	return mat
+}
+
 // Element1D represents a 1D finite element.  It assumes len(x) == 1 (i.e.
 // only one dimension of independent variables.
 type Element1D struct {
@@ -170,6 +224,8 @@ func NewElement1D(xs []float64) *Element1D {
 	return e
 }
 
+func (e *Element1D) Cache() *ElementCache { return nil }
+
 func (e *Element1D) Bounds() (low, up []float64) {
 	if e.lowbound == nil {
 		e.lowbound = []float64{e.left()}
@@ -185,7 +241,7 @@ func (e *Element1D) Contains(x []float64) bool {
 	return e.left() <= xx && xx <= e.right()
 }
 
-func (e *Element1D) Coord(x, refx []float64, id IntegralLocationId) []float64 {
+func (e *Element1D) Coord(x, refx []float64, id CoordId) []float64 {
 	if x == nil {
 		x = make([]float64, 1)
 	}
@@ -308,7 +364,7 @@ type ElementND struct {
 	Order int
 	NDim  int
 	Conv  Converter
-	Cache *ElementCache
+	cache *ElementCache
 	// ndim
 	low, up []float64
 }
@@ -319,13 +375,13 @@ type ElementND struct {
 // coordinates for the nodes running left to right (increasing x) in rows
 // starting at the lowest dimension and iterating recursively towards the
 // highest dimension.
-func NewElementND(order int, cache LagrangeNDCache, points ...[]float64) *ElementND {
+func NewElementND(order int, elemcache *ElementCache, shapecache LagrangeNDCache, points ...[]float64) *ElementND {
 	ndim := len(points[0])
 	nodes := make([]*Node, len(points))
 	for i, x := range points {
 		n := &LagrangeND{Order: order, Index: i}
-		if cache != nil {
-			n = cache.New(order, i)
+		if shapecache != nil {
+			n = shapecache.New(order, i)
 		}
 		nodes[i] = &Node{X: x, U: 1.0, W: 1.0, ShapeFunc: n}
 	}
@@ -338,6 +394,7 @@ func NewElementND(order int, cache LagrangeNDCache, points ...[]float64) *Elemen
 		Order: order,
 		NDim:  ndim,
 		Conv:  OptimConverter,
+		cache: elemcache,
 	}
 }
 
@@ -359,7 +416,7 @@ func (e *ElementND) Contains(x []float64) bool {
 }
 
 func (e *ElementND) Bounds() (low, up []float64) {
-	e.initCache()
+	e.Cache()
 	if e.low == nil {
 		for d := 0; d < e.NDim; d++ {
 			e.low = append(e.low, e.extreme(d, true))
@@ -382,12 +439,12 @@ func (e *ElementND) extreme(coord int, less bool) float64 {
 	return extreme
 }
 
-func (e *ElementND) Coord(x, refx []float64, id IntegralLocationId) []float64 {
+func (e *ElementND) Coord(x, refx []float64, id CoordId) []float64 {
 	if x == nil {
 		x = make([]float64, e.NDim)
 	} else {
-		if id >= 0 && e.Cache.HaveCoord[id] {
-			for i, v := range e.Cache.Coords[id] {
+		if id >= 0 && e.cache.HaveCoord[id] {
+			for i, v := range e.cache.Coords[id] {
 				x[i] = v
 			}
 			return x
@@ -405,8 +462,8 @@ func (e *ElementND) Coord(x, refx []float64, id IntegralLocationId) []float64 {
 	}
 
 	if id >= 0 {
-		e.Cache.HaveCoord[id] = true
-		cache := e.Cache.Coords[id]
+		e.cache.HaveCoord[id] = true
+		cache := e.cache.Coords[id]
 		for i, v := range x {
 			cache[i] = v
 		}
@@ -432,7 +489,9 @@ func (e *ElementND) IntegrateForce(k Kernel, wNode int, skipBoundary bool) float
 }
 
 func (e *ElementND) integrateBoundary(k Kernel, wNode, uNode int) float64 {
-	locid := IntegralLocationId(e.nquadpoints())
+	e.Cache() // force initialization of cache
+	nquadpoints := e.cache.NQuadPointsDim
+	locid := CoordId(nquadpoints)
 	fi := &FaceIntegrator{
 		Elem: e,
 		W:    e.Nds[wNode],
@@ -445,7 +504,6 @@ func (e *ElementND) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	}
 
 	bound := 0.0
-	nquadpoints := e.nquadpointsdim()
 	xs := make([]float64, nquadpoints)
 	weights := make([]float64, nquadpoints)
 	for d := 0; d < e.NDim; d++ {
@@ -460,25 +518,13 @@ func (e *ElementND) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	return bound
 }
 
-func (e *ElementND) nquadpoints() int {
-	return pow(e.nquadpointsdim(), e.NDim)
-}
-
-func (e *ElementND) nquadpointsall() int {
-	return e.nquadpoints() + 2*e.NDim*pow(e.nquadpointsdim(), e.NDim-1)
-}
-
-func (e *ElementND) nquadpointsdim() int {
-	return int(math.Ceil((float64(e.Order) + 1) / 2))
-}
-
 func (e *ElementND) integrateVol(k Kernel, wNode, uNode int) float64 {
-	var locid IntegralLocationId
+	var locid CoordId
 
 	fn := func(refxs []float64) float64 {
-		e.Coord(e.Cache.Pars.X, refxs, locid)
+		e.Coord(e.cache.Pars.X, refxs, locid)
 
-		jac := e.jacobian(refxs, locid)
+		jac := Jacobian(e, refxs, locid)
 		// determinant of jacobian to convert from ref element integral to
 		// real coord integral:
 		//     J = | dx/de  dy/de |
@@ -486,107 +532,94 @@ func (e *ElementND) integrateVol(k Kernel, wNode, uNode int) float64 {
 		jacdet := det(jac)
 
 		var w, u *Node = e.Nds[wNode], nil
-		e.Cache.Pars.W = w.Weight(refxs, locid)
-		w.WeightDeriv(refxs, e.Cache.Pars.GradW, locid)
-		ConvertDeriv(jac, e.Cache.Pars.GradW)
+		e.cache.Pars.W = w.Weight(refxs, locid)
+		w.WeightDeriv(refxs, e.cache.Pars.GradW, locid)
+		ConvertDeriv(jac, e.cache.Pars.GradW)
 		if uNode < 0 {
-			e.Cache.Pars.U = 0
-			for i := range e.Cache.Pars.GradU {
-				e.Cache.Pars.GradU[i] = 0
+			e.cache.Pars.U = 0
+			for i := range e.cache.Pars.GradU {
+				e.cache.Pars.GradU[i] = 0
 			}
 			locid++
-			return jacdet * k.VolInt(e.Cache.Pars)
+			return jacdet * k.VolInt(e.cache.Pars)
 		}
 		u = e.Nds[uNode]
-		e.Cache.Pars.U = u.Value(refxs, locid)
-		u.ValueDeriv(refxs, e.Cache.Pars.GradU, locid)
-		ConvertDeriv(jac, e.Cache.Pars.GradU)
+		e.cache.Pars.U = u.Value(refxs, locid)
+		u.ValueDeriv(refxs, e.cache.Pars.GradU, locid)
+		ConvertDeriv(jac, e.cache.Pars.GradU)
 
 		locid++
-		return jacdet * k.VolIntU(e.Cache.Pars)
+		return jacdet * k.VolIntU(e.cache.Pars)
 	}
-	nquadpoints := e.nquadpointsdim()
+	nquadpoints := e.cache.NQuadPointsDim
 	xs := make([]float64, nquadpoints)
 	weights := make([]float64, nquadpoints)
 	integral := QuadLegendre(e.NDim, fn, -1, 1, nquadpoints, xs, weights)
 	return integral
 }
 
-func (e *ElementND) initCache() {
-	if e.Cache == nil {
-		e.Cache = NewElementCache()
-	}
-	e.Cache.Init(e.NDim, len(e.Nds), e.nquadpointsall())
+func (e *ElementND) maxcoordid(nquadpointsdim int) CoordId {
+	nquadpoints := pow(nquadpointsdim, e.NDim)
+	return CoordId(nquadpoints + 2*e.NDim*pow(nquadpointsdim, e.NDim-1))
 }
 
-func (e *ElementND) jacobian(refxs []float64, id IntegralLocationId) *mat64.Dense {
-	e.initCache()
-
-	if e.Cache.HaveJac[id] {
-		return e.Cache.Jacs[id]
+func (e *ElementND) Cache() *ElementCache {
+	if e.cache == nil {
+		e.cache = NewElementCache()
 	}
-	e.Cache.HaveJac[id] = true
-
-	mat := e.Cache.Jacs[id]
-	data := mat.RawMatrix().Data
-	for i := range data {
-		data[i] = 0
+	if e.cache.Pars == nil {
+		nquadpointsdim := int(math.Ceil((float64(e.Order) + 1) / 2))
+		e.cache.Init(e.NDim, nquadpointsdim, e.maxcoordid(nquadpointsdim))
 	}
-	for ni, n := range e.Nds {
-		deriv := e.Cache.Derivs[ni]
-		n.ShapeFunc.Deriv(refxs, deriv, id)
-		for i := 0; i < e.NDim; i++ {
-			dd := deriv[i]
-			index := e.NDim * i
-			for j := 0; j < e.NDim; j++ {
-				data[index+j] += dd * n.X[j]
-			}
-		}
-	}
-	return mat
+	return e.cache
 }
 
+// ElementCache is a data structure intended for sharing between equivalent element types (i.e.
+// same order, same shape (e.g. quad 9, tri 3, etc.), same dimension, etc.  Each element of the
+// same type should share a pointer to the same ElementCache.  It enables reuse of memory and a
+// common cache of precomputed values.
 type ElementCache struct {
-	// npoints x ndim
-	Xs [][]float64
-	// npoints x ndim
-	Derivs [][]float64
-	// ndim x ndim
-	Mat *mat64.Dense
-	// ndim x ndim
-	Jacs      []*mat64.Dense
-	HaveJac   []bool
-	Coords    [][]float64
-	HaveCoord []bool
 	// ndim
-	RefXs []float64
-	Pars  *KernelParams
+	SliceNDim []float64
+	// Jacs is meant to cache jacbians for each CoordId. It contains one ndim x ndim matrix for
+	// each CoordId.
+	Jacs []*mat64.Dense
+	// HaveJac contains whether or not a jacobian has been cached for a particular CoordId (the
+	// array index)
+	HaveJac []bool
+	// Coords is meant to cache real coordinates (for given reference coordinates) for each
+	// CoordId. It contains one entry each CoordId.
+	Coords [][]float64
+	// HaveCoord contains whether or not a real coordinate (for a given reference coordinate) has
+	// been cached for a particular CoordId (the array index)
+	HaveCoord []bool
+	// Pars is a kernel params object that can be reused by elements for integration purposes.
+	Pars *KernelParams
+	// number of quad points per dimension
+	NQuadPointsDim int
 }
 
 func NewElementCache() *ElementCache { return &ElementCache{} }
 
-func (c *ElementCache) Init(ndim int, npoints int, nquadpoints int) {
-	if c.Xs != nil {
+// Init must be called on an element cache *before* it can be used.  ndim is the number of
+// dimensions and maxcoordid is the maximum CoordId that will be used with this cache/problem.
+func (c *ElementCache) Init(ndim, nquadpointsdim int, maxcoordid CoordId) {
+	if len(c.Jacs) == int(maxcoordid) {
 		return
 	}
-	c.Xs = make([][]float64, npoints)
-	c.Derivs = make([][]float64, npoints)
-	for i := range c.Xs {
-		c.Xs[i] = make([]float64, ndim)
-		c.Derivs[i] = make([]float64, ndim)
-	}
 
-	c.HaveCoord = make([]bool, nquadpoints)
-	c.Coords = make([][]float64, nquadpoints)
-	c.HaveJac = make([]bool, nquadpoints)
-	c.Jacs = make([]*mat64.Dense, nquadpoints)
+	c.NQuadPointsDim = nquadpointsdim
+
+	c.SliceNDim = make([]float64, ndim)
+	c.HaveCoord = make([]bool, maxcoordid)
+	c.Coords = make([][]float64, maxcoordid)
+	c.HaveJac = make([]bool, maxcoordid)
+	c.Jacs = make([]*mat64.Dense, maxcoordid)
 	for i := range c.Jacs {
 		c.Jacs[i] = mat64.NewDense(ndim, ndim, nil)
 		c.Coords[i] = make([]float64, ndim)
 	}
 
-	c.RefXs = make([]float64, ndim)
-	c.Mat = mat64.NewDense(ndim, ndim, nil)
 	c.Pars = &KernelParams{GradW: make([]float64, ndim), GradU: make([]float64, ndim)}
 }
 
@@ -596,7 +629,7 @@ type FaceIntegrator struct {
 	Elem     *ElementND
 	U, W     *Node
 	K        Kernel
-	Loc      *IntegralLocationId
+	Loc      *CoordId
 }
 
 func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
@@ -615,7 +648,7 @@ func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
 		}
 	}
 
-	jac := fi.Elem.jacobian(refxs, loc)
+	jac := Jacobian(fi.Elem, refxs, loc)
 	jacdet := faceArea(fi.FixedDim, jac)
 
 	pars := &KernelParams{}

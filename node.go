@@ -16,17 +16,17 @@ func (n *Node) Set(u, w float64) {
 	n.W = w
 }
 
-func (n *Node) Value(refx []float64, id IntegralLocationId) float64 {
+func (n *Node) Value(refx []float64, id CoordId) float64 {
 	return n.ShapeFunc.Value(refx, id) * n.U
 }
-func (n *Node) Weight(refx []float64, id IntegralLocationId) float64 {
+func (n *Node) Weight(refx []float64, id CoordId) float64 {
 	return n.ShapeFunc.Value(refx, id) * n.W
 }
 
 // ValueDeriv returns the partial derivatives (i.e. gradient) contribution to the solution of the
 // node at the given reference coordinates.  If deriv is not nil the result is stored in it and
 // deriv is returned - otherwise a new slice is allocated.
-func (n *Node) ValueDeriv(refx, deriv []float64, id IntegralLocationId) []float64 {
+func (n *Node) ValueDeriv(refx, deriv []float64, id CoordId) []float64 {
 	d := n.ShapeFunc.Deriv(refx, deriv, id)
 	for i := range d {
 		d[i] *= n.U
@@ -37,7 +37,7 @@ func (n *Node) ValueDeriv(refx, deriv []float64, id IntegralLocationId) []float6
 // WeightDeriv returns the partial derivatives (i.e. gradient) contribution to the weight function
 // of the node at the given reference coordinates.  If deriv is not nil the result is stored in it
 // and deriv is returned - otherwise a new slice is allocated.
-func (n *Node) WeightDeriv(refx, deriv []float64, id IntegralLocationId) []float64 {
+func (n *Node) WeightDeriv(refx, deriv []float64, id CoordId) []float64 {
 	d := n.ShapeFunc.Deriv(refx, deriv, id)
 	for i := range d {
 		d[i] *= n.W
@@ -46,12 +46,12 @@ func (n *Node) WeightDeriv(refx, deriv []float64, id IntegralLocationId) []float
 }
 
 type ShapeFunc interface {
-	Value(refx []float64, id IntegralLocationId) float64
+	Value(refx []float64, id CoordId) float64
 
 	// Deriv calculates and returns the partial derivatives at the given reference coordinates for
 	// each dimension.  If deriv is not nil, the resuts are stored in it and deriv is returned -
 	// otherwise a new slice is allocated and returned.
-	Deriv(refx, deriv []float64, id IntegralLocationId) []float64
+	Deriv(refx, deriv []float64, id CoordId) []float64
 }
 
 type Lagrange1D struct {
@@ -62,7 +62,7 @@ type Lagrange1D struct {
 	Order int
 }
 
-func (fn Lagrange1D) Value(refx []float64, id IntegralLocationId) float64 {
+func (fn Lagrange1D) Value(refx []float64, id CoordId) float64 {
 	xx, u := refx[0], 1.0
 	xindex := -1 + float64(fn.Index)*2/float64(fn.Order)
 	for i := 0; i < fn.Order+1; i++ {
@@ -75,7 +75,7 @@ func (fn Lagrange1D) Value(refx []float64, id IntegralLocationId) float64 {
 	return u
 }
 
-func (fn Lagrange1D) Deriv(refx, deriv []float64, id IntegralLocationId) []float64 {
+func (fn Lagrange1D) Deriv(refx, deriv []float64, id CoordId) []float64 {
 	if deriv == nil {
 		deriv = make([]float64, 1)
 	}
@@ -110,7 +110,7 @@ type Lagrange2D struct {
 	Order int
 }
 
-func (fn Lagrange2D) Value(refx []float64, id IntegralLocationId) float64 {
+func (fn Lagrange2D) Value(refx []float64, id CoordId) float64 {
 	n := fn.Order + 1
 	if fn.Index > n*n-1 {
 		panic("incompatible Index and Order")
@@ -134,7 +134,7 @@ func (fn Lagrange2D) Value(refx []float64, id IntegralLocationId) float64 {
 	return u
 }
 
-func (fn Lagrange2D) Deriv(refx, deriv []float64, id IntegralLocationId) []float64 {
+func (fn Lagrange2D) Deriv(refx, deriv []float64, id CoordId) []float64 {
 	n := fn.Order + 1
 	if fn.Index > n*n-1 {
 		panic("incompatible Index and Order")
@@ -251,7 +251,7 @@ func (fn *LagrangeND) init(ndim int) {
 	}
 }
 
-func (fn *LagrangeND) Value(refx []float64, id IntegralLocationId) float64 {
+func (fn *LagrangeND) Value(refx []float64, id CoordId) float64 {
 	ndim := len(refx)
 	n := fn.Order + 1
 	fn.init(ndim)
@@ -283,7 +283,7 @@ func (fn *LagrangeND) Value(refx []float64, id IntegralLocationId) float64 {
 	return u
 }
 
-func (fn LagrangeND) Deriv(refx, deriv []float64, id IntegralLocationId) []float64 {
+func (fn LagrangeND) Deriv(refx, deriv []float64, id CoordId) []float64 {
 	ndim := len(refx)
 	n := fn.Order + 1
 	fn.init(ndim)

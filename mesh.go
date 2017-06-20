@@ -119,9 +119,8 @@ func NewMeshSimple1D(order int, nodePos []float64) (*Mesh, error) {
 		for j := 0; j < order+1; j++ {
 			xs[j] = []float64{nodePos[i*order+j]}
 		}
-		e := NewElementND(order, shapecache, xs...)
+		e := NewElementND(order, elemcache, shapecache, xs...)
 		e.Conv = StructuredConverter
-		e.Cache = elemcache
 		m.AddElement(e, i > 0 && i < nElems-1)
 	}
 	return m, nil
@@ -153,9 +152,8 @@ func NewMeshSimple2D(order int, xs, ys []float64) (*Mesh, error) {
 				}
 			}
 			edge := i == 0 || i == xDivs-1 || j == 0 || j == yDivs-1
-			e := NewElementND(order, shapecache, points...)
+			e := NewElementND(order, elemcache, shapecache, points...)
 			e.Conv = StructuredConverter
-			e.Cache = elemcache
 			m.AddElement(e, !edge)
 		}
 	}
@@ -188,9 +186,8 @@ func NewMeshSimple3D(order int, xs, ys, zs []float64) (*Mesh, error) {
 						}
 					}
 				}
-				e := NewElementND(order, shapecache, points...)
+				e := NewElementND(order, elemcache, shapecache, points...)
 				e.Conv = StructuredConverter
-				e.Cache = elemcache
 				edge := i == 0 || i == xDivs-1 || j == 0 || j == yDivs-1 || k == 0 || k == zDivs-1
 				m.AddElement(e, !edge)
 			}
