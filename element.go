@@ -386,6 +386,12 @@ func (e *ElementND) Coord(x, refx []float64, id IntegralLocationId) []float64 {
 	if x == nil {
 		x = make([]float64, e.NDim)
 	} else {
+		if id >= 0 && e.Cache.HaveCoord[id] {
+			for i, v := range e.Cache.Coords[id] {
+				x[i] = v
+			}
+			return x
+		}
 		for i := range x {
 			x[i] = 0
 		}
@@ -397,6 +403,15 @@ func (e *ElementND) Coord(x, refx []float64, id IntegralLocationId) []float64 {
 			x[i] += val * n.X[i]
 		}
 	}
+
+	if id >= 0 {
+		e.Cache.HaveCoord[id] = true
+		cache := e.Cache.Coords[id]
+		for i, v := range x {
+			cache[i] = v
+		}
+	}
+
 	return x
 }
 
@@ -539,8 +554,10 @@ type ElementCache struct {
 	// ndim x ndim
 	Mat *mat64.Dense
 	// ndim x ndim
-	Jacs    []*mat64.Dense
-	HaveJac []bool
+	Jacs      []*mat64.Dense
+	HaveJac   []bool
+	Coords    [][]float64
+	HaveCoord []bool
 	// ndim
 	RefXs []float64
 	Pars  *KernelParams
@@ -559,10 +576,13 @@ func (c *ElementCache) Init(ndim int, npoints int, nquadpoints int) {
 		c.Derivs[i] = make([]float64, ndim)
 	}
 
+	c.HaveCoord = make([]bool, nquadpoints)
+	c.Coords = make([][]float64, nquadpoints)
 	c.HaveJac = make([]bool, nquadpoints)
 	c.Jacs = make([]*mat64.Dense, nquadpoints)
 	for i := range c.Jacs {
 		c.Jacs[i] = mat64.NewDense(ndim, ndim, nil)
+		c.Coords[i] = make([]float64, ndim)
 	}
 
 	c.RefXs = make([]float64, ndim)
