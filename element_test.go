@@ -5,23 +5,24 @@ import (
 	"testing"
 )
 
-func TestElement1D(t *testing.T) {
+func TestElementND_Interpolate(t *testing.T) {
 	tests := []struct {
-		Xs      []float64
+		Xs      [][]float64
 		Ys      []float64
 		SampleX float64
 		Want    float64
 	}{
-		{Xs: []float64{0, 1}, Ys: []float64{1, 2}, SampleX: -1, Want: 1.0},
-		{Xs: []float64{0, 1}, Ys: []float64{1, 2}, SampleX: 0, Want: 1.5},
-		{Xs: []float64{0, 1}, Ys: []float64{1, 2}, SampleX: 1.0, Want: 2.0},
-		{Xs: []float64{0, 1, 2}, Ys: []float64{1, 2, 9}, SampleX: -1, Want: 1},
-		{Xs: []float64{0, 1, 2}, Ys: []float64{1, 2, 9}, SampleX: 0, Want: 2},
-		{Xs: []float64{0, 1, 2}, Ys: []float64{1, 2, 9}, SampleX: 1, Want: 9},
+		{Xs: [][]float64{[]float64{0}, []float64{1}}, Ys: []float64{1, 2}, SampleX: -1, Want: 1.0},
+		{Xs: [][]float64{[]float64{0}, []float64{1}}, Ys: []float64{1, 2}, SampleX: 0, Want: 1.5},
+		{Xs: [][]float64{[]float64{0}, []float64{1}}, Ys: []float64{1, 2}, SampleX: 1.0, Want: 2.0},
+		{Xs: [][]float64{[]float64{0}, []float64{1}, []float64{2}}, Ys: []float64{1, 2, 9}, SampleX: -1, Want: 1},
+		{Xs: [][]float64{[]float64{0}, []float64{1}, []float64{2}}, Ys: []float64{1, 2, 9}, SampleX: 0, Want: 2},
+		{Xs: [][]float64{[]float64{0}, []float64{1}, []float64{2}}, Ys: []float64{1, 2, 9}, SampleX: 1, Want: 9},
 	}
 
 	for i, test := range tests {
-		elem := NewElement1D(test.Xs)
+		order := len(test.Xs) - 1
+		elem := NewElementND(order, nil, nil, test.Xs...)
 		for i, n := range elem.Nodes() {
 			n.U = test.Ys[i]
 			n.W = 1

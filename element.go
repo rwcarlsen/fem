@@ -5,7 +5,6 @@ import (
 	"io"
 	"math"
 
-	"github.com/gonum/integrate/quad"
 	"github.com/gonum/matrix/mat64"
 	"github.com/gonum/optimize"
 )
@@ -190,142 +189,15 @@ func Jacobian(e Element, refxs []float64, id CoordId) *mat64.Dense {
 	return mat
 }
 
-// Element1D represents a 1D finite element.  It assumes len(x) == 1 (i.e.
-// only one dimension of independent variables.
-type Element1D struct {
-	Nds               []*Node
-	lowbound, upbound []float64
-	// jacdet holds the determinant of jacobian to used convert from ref
-	// element integral to real coord integral
-	jacdet    float64
-	invjacdet float64
-	// all below fields are used as state-holders for quadrature integration func
-	wNode, uNode int
-	kern         Kernel
-	refxs        []float64
-	pars         *KernelParams
-	pars2        *KernelParams
-}
-
-// NewElement1D generates a lagrange polynomial interpolating element of
-// degree len(xs)-1 using the values in xs as the interpolation points/nodes.
-func NewElement1D(xs []float64) *Element1D {
-	e := &Element1D{refxs: make([]float64, 1), pars: &KernelParams{}, pars2: &KernelParams{}}
-	for i := range xs {
-		order := len(xs) - 1
-		nodepos := []float64{xs[i]}
-		n := &Node{X: nodepos, U: 1.0, W: 1.0, ShapeFunc: &LagrangeND{Order: order, Index: i}}
-		e.Nds = append(e.Nds, n)
-	}
-
-	e.jacdet = (e.right() - e.left()) / 2
-	e.invjacdet = 1 / e.jacdet
-
-	return e
-}
-
-func (e *Element1D) Cache() *ElementCache { return nil }
-
-func (e *Element1D) Bounds() (low, up []float64) {
-	if e.lowbound == nil {
-		e.lowbound = []float64{e.left()}
-		e.upbound = []float64{e.right()}
-	}
-	return e.lowbound, e.upbound
-}
-
-func (e *Element1D) Nodes() []*Node { return e.Nds }
-
-func (e *Element1D) Contains(x []float64) bool {
-	xx := x[0]
-	return e.left() <= xx && xx <= e.right()
-}
-
-func (e *Element1D) Coord(x, refx []float64, id CoordId) []float64 {
-	if x == nil {
-		x = make([]float64, 1)
-	}
-	x[0] = (e.left()*(1-refx[0]) + e.right()*(1+refx[0])) / 2
-	return x
-}
-
-func (e *Element1D) left() float64  { return e.Nds[0].X[0] }
-func (e *Element1D) right() float64 { return e.Nds[len(e.Nds)-1].X[0] }
-
-func (e *Element1D) IntegrateStiffness(k Kernel, wNode, uNode int, skipBoundary bool) float64 {
-	I := e.integrateVol(k, wNode, uNode)
-	if !skipBoundary {
-		I += e.integrateBoundary(k, wNode, uNode)
-	}
-	return I
-}
-
-func (e *Element1D) IntegrateForce(k Kernel, wNode int, skipBoundary bool) float64 {
-	I := e.integrateVol(k, wNode, -1)
-	if !skipBoundary {
-		I += e.integrateBoundary(k, wNode, -1)
-	}
-	return I
-}
-
-var refLeft = []float64{-1}
-var refRight = []float64{1}
-
-func (e *Element1D) integrateBoundary(k Kernel, wNode, uNode int) float64 {
-	var w, u *Node = e.Nds[wNode], nil
-	if e.pars2.X == nil {
-		e.pars.X = make([]float64, 1)
-		e.pars2.X = make([]float64, 1)
-	}
-
-	e.pars.X[0] = e.left()
-	e.pars.W = w.Weight(refLeft, -1)
-	e.pars.GradW = vecMult(w.WeightDeriv(refLeft, nil, -1), e.invjacdet)
-	e.pars2.X[0] = e.right()
-	e.pars2.W = w.Weight(refRight, -1)
-	e.pars2.GradW = vecMult(w.WeightDeriv(refRight, nil, -1), e.invjacdet)
-
-	if uNode < 0 {
-		return k.BoundaryInt(e.pars) + k.BoundaryInt(e.pars2)
-	}
-	u = e.Nds[uNode]
-	e.pars.U = u.Value(refLeft, -1)
-	e.pars.GradU = vecMult(u.ValueDeriv(refLeft, nil, -1), e.invjacdet)
-
-	e.pars2.U = u.Value(refRight, -1)
-	e.pars2.GradU = vecMult(u.ValueDeriv(refRight, nil, -1), e.invjacdet)
-	return k.BoundaryIntU(e.pars) + k.BoundaryIntU(e.pars2)
-}
-
-func (e *Element1D) volQuadFunc(ref float64) float64 {
-	var w, u *Node = e.Nds[e.wNode], nil
-	e.refxs[0] = ref
-	e.pars.X = e.Coord(e.pars.X, e.refxs, -1)
-	e.pars.W = w.Weight(e.refxs, -1)
-	e.pars.GradW = vecMult(w.WeightDeriv(e.refxs, nil, -1), e.invjacdet)
-
-	if e.uNode < 0 {
-		return e.kern.VolInt(e.pars)
-	}
-	u = e.Nds[e.uNode]
-	e.pars.U = u.Value(e.refxs, -1)
-	e.pars.GradU = vecMult(u.ValueDeriv(e.refxs, nil, -1), e.invjacdet)
-	return e.kern.VolIntU(e.pars)
-}
-
-func (e *Element1D) integrateVol(k Kernel, wNode, uNode int) float64 {
-	e.wNode, e.uNode = wNode, uNode
-	e.kern = k
-	return quad.Fixed(e.volQuadFunc, -1, 1, len(e.Nds), quad.Legendre{}, 0) * e.jacdet
-}
-
 // PrintFunc prints the element value and derivative in tab-separated form
 // with nsamples evenly spaced over the element's domain (one sample per line)
 // in the form:
 //
 //    [x]	[value]	[derivative]
 //    ...
-func (e *Element1D) PrintFunc(w io.Writer, nsamples int) {
+//
+// TODO: implement higher-dimensional support
+func PrintFunc(e Element, w io.Writer, nsamples int) {
 	drefx := 2 / (float64(nsamples) - 1)
 	for i := 0; i < nsamples; i++ {
 		refx := []float64{-1 + float64(i)*drefx}
@@ -342,14 +214,17 @@ func (e *Element1D) PrintFunc(w io.Writer, nsamples int) {
 // (one sample per line) in the form:
 //
 //    [x]	[LagrangeNode1-shape(x)]	[LagrangeNode1-shapederiv(x)]	[LagrangeNode2-shape(x)]   ...
-func (e *Element1D) PrintShapeFuncs(w io.Writer, nsamples int) {
+//
+// TODO: implement higher-dimensional support
+func PrintShapeFuncs(e Element, w io.Writer, nsamples int) {
 	drefx := 2 / (float64(nsamples) - 1)
+	low, up := e.Bounds()
 	for i := 0; i < nsamples; i++ {
 		refx := []float64{-1 + float64(i)*drefx}
 		x := e.Coord(nil, refx, -1)[0]
 		fmt.Fprintf(w, "%v", x)
-		for _, n := range e.Nds {
-			if x < e.left() || x > e.right() {
+		for _, n := range e.Nodes() {
+			if x < low[0] || x > up[0] {
 				fmt.Fprintf(w, "\t0\t0")
 			} else {
 				fmt.Fprintf(w, "\t%v\t%v", n.Value(refx, -1), n.ValueDeriv(refx, nil, -1)[0])
