@@ -18,7 +18,7 @@ import (
 )
 
 var printmats = flag.Bool("print", false, "print stiffness and force matrices")
-var ndivs = flag.Int("ndivs", 5, "number of divisions per dimension in the structured mesh")
+var ndivs = flag.Int("n", 5, "number of divisions per dimension in the structured mesh")
 var order = flag.Int("order", 1, "lagrange shape function order")
 var iter = flag.Int("iter", 1000, "number of iterations for solve (default=direct)")
 var usertol = flag.Float64("tol", 1e-5, "l2 norm consecutive iterative soln diff threshold")

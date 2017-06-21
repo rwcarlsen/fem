@@ -186,6 +186,10 @@ func Jacobian(e Element, refxs []float64, id CoordId) *mat64.Dense {
 			}
 		}
 	}
+
+	if cache != nil {
+		cache.InvJacs[id].Factorize(mat)
+	}
 	return mat
 }
 
@@ -409,7 +413,7 @@ func (e *ElementND) integrateVol(k Kernel, wNode, uNode int) float64 {
 		var w, u *Node = e.Nds[wNode], nil
 		e.cache.Pars.W = w.Weight(refxs, locid)
 		w.WeightDeriv(refxs, e.cache.Pars.GradW, locid)
-		ConvertDeriv(jac, e.cache.Pars.GradW)
+		ConvertDeriv(jac, e.cache.InvJacs[locid], e.cache.Pars.GradW)
 		if uNode < 0 {
 			e.cache.Pars.U = 0
 			for i := range e.cache.Pars.GradU {
@@ -421,7 +425,7 @@ func (e *ElementND) integrateVol(k Kernel, wNode, uNode int) float64 {
 		u = e.Nds[uNode]
 		e.cache.Pars.U = u.Value(refxs, locid)
 		u.ValueDeriv(refxs, e.cache.Pars.GradU, locid)
-		ConvertDeriv(jac, e.cache.Pars.GradU)
+		ConvertDeriv(jac, e.cache.InvJacs[locid], e.cache.Pars.GradU)
 
 		locid++
 		return jacdet * k.VolIntU(e.cache.Pars)
@@ -458,7 +462,8 @@ type ElementCache struct {
 	SliceNDim []float64
 	// Jacs is meant to cache jacbians for each CoordId. It contains one ndim x ndim matrix for
 	// each CoordId.
-	Jacs []*mat64.Dense
+	Jacs    []*mat64.Dense
+	InvJacs []*mat64.LU
 	// HaveJac contains whether or not a jacobian has been cached for a particular CoordId (the
 	// array index)
 	HaveJac []bool
@@ -490,8 +495,10 @@ func (c *ElementCache) Init(ndim, nquadpointsdim int, maxcoordid CoordId) {
 	c.Coords = make([][]float64, maxcoordid)
 	c.HaveJac = make([]bool, maxcoordid)
 	c.Jacs = make([]*mat64.Dense, maxcoordid)
+	c.InvJacs = make([]*mat64.LU, maxcoordid)
 	for i := range c.Jacs {
 		c.Jacs[i] = mat64.NewDense(ndim, ndim, nil)
+		c.InvJacs[i] = new(mat64.LU)
 		c.Coords[i] = make([]float64, ndim)
 	}
 
@@ -529,7 +536,7 @@ func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
 	pars := &KernelParams{}
 	pars.X = fi.Elem.Coord(pars.X, refxs, loc)
 	pars.GradW = fi.W.WeightDeriv(refxs, pars.GradW, loc)
-	ConvertDeriv(jac, pars.GradW)
+	ConvertDeriv(jac, fi.Elem.Cache().InvJacs[loc], pars.GradW)
 	pars.W = fi.W.Weight(refxs, loc)
 
 	if fi.U == nil {
@@ -540,7 +547,7 @@ func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
 	}
 	pars.U = fi.U.Value(refxs, loc)
 	pars.GradU = fi.U.ValueDeriv(refxs, pars.GradU, loc)
-	ConvertDeriv(jac, pars.GradU)
+	ConvertDeriv(jac, fi.Elem.Cache().InvJacs[loc], pars.GradU)
 	*fi.Loc++
 	return fi.K.BoundaryIntU(pars) * jacdet
 }
@@ -549,8 +556,9 @@ func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
 // coordinates) to dN/dx and dN/dy (derivatives w.r.t. the real coordinates).
 // This is used to convert the GradU and GradW terms to be the correct values
 // when building the stiffness matrix.
-func ConvertDeriv(jac *mat64.Dense, refgradu []float64) {
-	ndim, _ := jac.Dims()
+func ConvertDeriv(jac *mat64.Dense, invjac *mat64.LU, refgradu []float64) {
+	ndim := len(refgradu)
+
 	switch ndim {
 	case 1:
 		refgradu[0] /= jac.At(0, 0)
@@ -585,8 +593,10 @@ func ConvertDeriv(jac *mat64.Dense, refgradu []float64) {
 		refgradu[1] = s2
 		refgradu[2] = s3
 	default:
-		var soln mat64.Vector
-		soln.SolveVec(jac, mat64.NewVector(ndim, refgradu))
+		b := make([]float64, ndim)
+		copy(b, refgradu)
+		soln := mat64.NewVector(ndim, nil)
+		soln.SolveLUVec(invjac, false, mat64.NewVector(ndim, refgradu))
 		for i := range refgradu {
 			refgradu[i] = soln.At(i, 0)
 		}
