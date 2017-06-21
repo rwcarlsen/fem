@@ -77,29 +77,42 @@ func TestNewCholesky2(t *testing.T) {
 	}
 }
 
-func TestCholesky_Solve(t *testing.T) {
-	size := 50
-	nfill := 4 // number filled entries per row
-	tol := 1e-6
-
-	s := randSparse(size, nfill, 0)
-	f := make([]float64, size)
-	for i := range f {
-		f[i] = 1
-	}
-
-	d := mat64.DenseCopyOf(s)
-	var want mat64.Vector
-	want.SolveVec(d, mat64.NewVector(size, f))
-
-	chol := NewCholesky(nil, s)
-	got, _ := chol.Solve(f)
-	for i := range got {
-		if math.Abs(got[i]-want.At(i, 0)) > tol {
-			t.Errorf("A:\n% 3g\nb=%v", mat64.Formatted(s), f)
-			t.Errorf("condition number of A is %v", mat64.Cond(s, 2))
-			t.Fatalf("solutions don't match:\ngot %v\nwant %v", got, want.RawVector().Data)
+func testCholesky(size, nfill int) func(t *testing.T) {
+	return func(t *testing.T) {
+		const tol = 1e-6
+		s := randSparse(size, nfill, 0)
+		f := make([]float64, size)
+		for i := range f {
+			f[i] = 1
 		}
+
+		d := mat64.DenseCopyOf(s)
+		var want mat64.Vector
+		want.SolveVec(d, mat64.NewVector(size, f))
+
+		chol := NewCholesky(nil, s)
+		got, _ := chol.Solve(f)
+		for i := range got {
+			if math.Abs(got[i]-want.At(i, 0)) > tol {
+				//t.Errorf("A:\n% 3g\nb=%v", mat64.Formatted(s), f)
+				t.Errorf("    condition number of A is %v", mat64.Cond(s, 2))
+				//t.Errorf("solutions don't match:\ngot %v\nwant %v", got, want.RawVector().Data)
+				t.Errorf("    solutions don't match")
+				break
+			}
+		}
+	}
+}
+
+func TestCholesky_Solve(t *testing.T) {
+	t.Run("size=50, nfill=5", testCholesky(50, 5))
+	t.Run("size=150, nfill=15", testCholesky(150, 15))
+
+	if !testing.Short() {
+		t.Run("size=601, nfill=12", testCholesky(601, 12))
+		t.Run("size=601, nfill=13", testCholesky(601, 13))
+		t.Run("size=601, nfill=14", testCholesky(601, 14))
+		t.Run("size=601, nfill=15", testCholesky(601, 15))
 	}
 }
 

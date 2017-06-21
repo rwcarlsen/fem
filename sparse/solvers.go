@@ -127,12 +127,6 @@ func NewCholesky(L, A Matrix) *Cholesky {
 		L.Set(k, k, akk)
 
 		// below diag
-		for i, aik := range L.NonzeroRows(k) {
-			if i > k && aik != 0 {
-				L.Set(i, k, aik/akk)
-			}
-		}
-
 		for j, ajk := range L.NonzeroRows(k) {
 			if j <= k {
 				continue
@@ -142,6 +136,12 @@ func NewCholesky(L, A Matrix) *Cholesky {
 					aij := L.At(i, j)
 					L.Set(i, j, aij-aik*ajk)
 				}
+			}
+		}
+
+		for i, aik := range L.NonzeroRows(k) {
+			if i > k && aik != 0 {
+				L.Set(i, k, aik/akk)
 			}
 		}
 	}
