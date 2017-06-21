@@ -236,11 +236,11 @@ func (m *Mesh) Solve(k Kernel) error {
 		}
 
 		bb[subindices[i]] = b[i]
-		for j, val := range A.NonzeroCols(i) {
-			if _, ok := knowns[j]; ok {
+		for _, nonzero := range A.SweepRow(i) {
+			if _, ok := knowns[nonzero.J]; ok {
 				continue
 			}
-			AA.Set(subindices[i], subindices[j], val)
+			AA.Set(subindices[i], subindices[nonzero.J], nonzero.Val)
 		}
 	}
 
@@ -326,8 +326,8 @@ func (m *Mesh) StiffnessMatrix(k Kernel) *sparse.Sparse {
 				mat.Set(a, b, mat.At(a, b)+v)
 				mat.Set(b, a, mat.At(a, b))
 				if ok, _ := k.IsDirichlet(n.X); ok {
-					for c := range mat.NonzeroCols(a) {
-						mat.Set(a, c, 0.0)
+					for _, nonzero := range mat.SweepRow(a) {
+						mat.Set(a, nonzero.J, 0.0)
 					}
 					mat.Set(a, a, 1.0)
 					continue

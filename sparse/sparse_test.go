@@ -1,11 +1,20 @@
 package sparse
 
 import (
+	"fmt"
 	"math/rand"
 	"testing"
 
 	"github.com/gonum/matrix/mat64"
 )
+
+func TestSparse(t *testing.T) {
+	const tol = 1e-6
+	size := 6
+	nfill := 3
+	s := randSparse(size, nfill, 0)
+	fmt.Printf("% .2v\n", mat64.Formatted(s))
+}
 
 func randSparse(size, fillPerRow int, off float64) Matrix {
 	s := NewSparse(size)

@@ -1,8 +1,9 @@
 package sparse
 
 import (
-	"math"
+	"fmt"
 	"runtime"
+	"sort"
 	"sync"
 
 	"github.com/gonum/matrix/mat64"
@@ -44,113 +45,128 @@ type Matrix interface {
 	Dims() (int, int)
 	Set(i, j int, val float64)
 	At(i, j int) float64
-	NonzeroRows(col int) (rows map[int]float64)
-	NonzeroCols(row int) (cols map[int]float64)
 	T() mat64.Matrix
-	// Index should be called after any mutations to the nonzeros before using the Sweep[Row/Col]
-	// methods.
-	Index()
-	SweepRow(r int) []Nonzero
-	SweepCol(c int) []Nonzero
+	SweepRow(r int) []*Nonzero
+	SweepCol(c int) []*Nonzero
 }
 
 type Nonzero struct {
-	I   int
-	Val float64
+	I, J int
+	Val  float64
 }
 
 type Sparse struct {
 	// Tol specifies an absolute tolerance within which values are treated
 	// as and set to zero.
-	Tol float64
-	// map[col]map[row]val
-	nonzeroRow []map[int]float64
-	// map[row]map[col]val
-	nonzeroCol     []map[int]float64
-	size           int
-	nonzeroRowList [][]Nonzero
-	nonzeroColList [][]Nonzero
+	Tol          float64
+	size         int
+	nonzeroByCol [][]*Nonzero
+	nonzeroByRow [][]*Nonzero
+	searchslice  []*Nonzero
+	searchi      int
+	searchval    float64
 }
 
 // NewSparse creates a new square [size]x[size] sparse matrix representation with a default
 // tolerance of 1e-6 for zero values.
 func NewSparse(size int) *Sparse {
 	return &Sparse{
-		Tol:        1e-6,
-		nonzeroRow: make([]map[int]float64, size),
-		nonzeroCol: make([]map[int]float64, size),
-		size:       size,
+		Tol:          1e-6,
+		nonzeroByRow: make([][]*Nonzero, size),
+		nonzeroByCol: make([][]*Nonzero, size),
+		size:         size,
 	}
 }
 
-func (m *Sparse) Index() {
-	if m.nonzeroRowList == nil {
-		m.nonzeroRowList = make([][]Nonzero, m.size)
-		m.nonzeroColList = make([][]Nonzero, m.size)
-	}
-	for i := range m.nonzeroRowList {
-		m.nonzeroRowList[i] = m.nonzeroRowList[i][:0]
-		m.nonzeroColList[i] = m.nonzeroColList[i][:0]
-	}
-	for c, rows := range m.nonzeroRow {
-		for r, val := range rows {
-			m.nonzeroRowList[c] = append(m.nonzeroRowList[c], Nonzero{I: r, Val: val})
-			m.nonzeroColList[r] = append(m.nonzeroColList[r], Nonzero{I: c, Val: val})
-		}
-	}
-}
-func (m *Sparse) SweepRow(r int) []Nonzero {
-	if m.nonzeroRowList == nil {
-		m.Index()
-	}
-	return m.nonzeroColList[r]
-}
-func (m *Sparse) SweepCol(c int) []Nonzero {
-	if m.nonzeroRowList == nil {
-		m.Index()
-	}
-	return m.nonzeroRowList[c]
-}
+func (m *Sparse) SweepRow(r int) []*Nonzero { return m.nonzeroByRow[r] }
+func (m *Sparse) SweepCol(c int) []*Nonzero { return m.nonzeroByCol[c] }
 
 func Copy(dst, src Matrix) {
 	size, _ := src.Dims()
 	for i := 0; i < size; i++ {
-		for j, val := range src.NonzeroCols(i) {
-			dst.Set(i, j, val)
+		for _, nonzero := range src.SweepRow(i) {
+			dst.Set(i, nonzero.J, nonzero.Val)
 		}
 	}
 }
 
-func (m *Sparse) Clone(b Matrix) {
-	size, _ := b.Dims()
-	for i := 0; i < size; i++ {
-		for j, v := range b.NonzeroCols(i) {
-			m.Set(i, j, v)
-		}
+func (m *Sparse) T() mat64.Matrix  { return mat64.Transpose{m} }
+func (m *Sparse) Dims() (int, int) { return m.size, m.size }
+func (m *Sparse) At(i, j int) float64 {
+	m.searchslice = m.nonzeroByRow[i]
+	m.searchi = j
+	jindex := sort.Search(len(m.searchslice), m.atsearch)
+	if jindex < len(m.searchslice) && m.searchslice[jindex].J == j {
+		return m.searchslice[jindex].Val
 	}
+	return 0
 }
 
-func (m *Sparse) NonzeroRows(col int) (rows map[int]float64) { return m.nonzeroRow[col] }
-func (m *Sparse) NonzeroCols(row int) (cols map[int]float64) { return m.nonzeroCol[row] }
+// TODO: add method for cleaning out accumulated nonzero entries that store a 0.0 (or small) value
 
-func (m *Sparse) T() mat64.Matrix     { return mat64.Transpose{m} }
-func (m *Sparse) Dims() (int, int)    { return m.size, m.size }
-func (m *Sparse) At(i, j int) float64 { return m.nonzeroCol[i][j] }
+func (m *Sparse) setsearchi(i int) bool {
+	nonzero := m.searchslice[i]
+	//fmt.Println("len(searchslize)=", len(m.searchslice), ", index=", i)
+	if nonzero.I == m.searchi {
+		nonzero.Val = m.searchval
+		return true
+	}
+	return nonzero.I >= m.searchi
+}
+
+func (m *Sparse) setsearchj(i int) bool {
+	nonzero := m.searchslice[i]
+	if nonzero.J == m.searchi {
+		nonzero.Val = m.searchval
+		return true
+	}
+	return nonzero.J >= m.searchi
+}
+
+func (m *Sparse) atsearch(j int) bool { return m.searchslice[j].J >= m.searchi }
+
 func (m *Sparse) Set(i, j int, v float64) {
-	if math.Abs(v) < m.Tol {
-		delete(m.nonzeroCol[i], j)
-		delete(m.nonzeroRow[j], i)
+	defer func() {
+		fmt.Printf("Set(%v,%v)=%v\n", i, j, v)
+		//for _, nonzeros := range m.nonzeroByRow {
+		//	for _, nonzero := range nonzeros {
+		//		fmt.Printf("    nonzero %v\n", nonzero)
+		//	}
+		//}
+	}()
+	m.searchval = v
+
+	m.searchslice = m.nonzeroByRow[i]
+	m.searchi = j
+	byrowindex := sort.Search(len(m.searchslice), m.setsearchj)
+	if byrowindex < len(m.searchslice) && m.searchslice[byrowindex].J == j {
+		// we already found and updated existing entry - so just return early
 		return
 	}
-	if m.nonzeroCol[i] == nil {
-		m.nonzeroCol[i] = make(map[int]float64)
-	}
-	if m.nonzeroRow[j] == nil {
-		m.nonzeroRow[j] = make(map[int]float64)
-	}
+	m.searchslice = m.nonzeroByCol[j]
+	m.searchi = i
+	bycolindex := sort.Search(len(m.searchslice), m.setsearchi)
 
-	m.nonzeroCol[i][j] = v
-	m.nonzeroRow[j][i] = v
+	// insert new nonzero
+	nonzero := &Nonzero{I: i, J: j, Val: v}
+
+	lena := len(m.nonzeroByRow[i])
+	fmt.Printf("lena=%v, byrowindex=%v\n", lena, byrowindex)
+	m.nonzeroByRow[i] = append(m.nonzeroByRow[i], nil)
+	byrow := m.nonzeroByRow[i]
+	for a := lena - 1; a >= byrowindex; a-- {
+		fmt.Printf("  sliding col %v to col %v\n", a, a+1)
+		byrow[a+1] = byrow[a] // slide entries back one
+	}
+	byrow[byrowindex] = nonzero // insert new entry in now empty slot
+
+	lenb := len(m.nonzeroByCol[j])
+	m.nonzeroByCol[j] = append(m.nonzeroByCol[j], nil)
+	bycol := m.nonzeroByCol[j]
+	for b := lenb - 1; b >= bycolindex; b-- {
+		bycol[b+1] = bycol[b] // slide entries back one
+	}
+	bycol[bycolindex] = nonzero // insert new entry in now empty slot
 }
 
 func mul(m Matrix, b, result []float64, start, end int) {
@@ -194,14 +210,14 @@ func Mul(m Matrix, b []float64) []float64 {
 }
 
 func RowCombination(m Matrix, pivrow, dstrow int, mult float64) {
-	for col, aij := range m.NonzeroCols(pivrow) {
-		m.Set(dstrow, col, m.At(dstrow, col)+aij*mult)
+	for _, nonzero := range m.SweepRow(pivrow) {
+		m.Set(dstrow, nonzero.J, m.At(dstrow, nonzero.J)+nonzero.Val*mult)
 	}
 }
 
 func RowMult(m Matrix, row int, mult float64) {
-	for col, val := range m.NonzeroCols(row) {
-		m.Set(row, col, val*mult)
+	for _, nonzero := range m.SweepRow(row) {
+		m.Set(row, nonzero.J, nonzero.Val*mult)
 	}
 }
 
@@ -212,8 +228,8 @@ func RowMult(m Matrix, row int, mult float64) {
 func Permute(dst, src Matrix, mapping []int) {
 	size, _ := src.Dims()
 	for i := 0; i < size; i++ {
-		for j, val := range src.NonzeroCols(i) {
-			dst.Set(mapping[i], mapping[j], val)
+		for _, nonzero := range src.SweepRow(i) {
+			dst.Set(mapping[i], mapping[nonzero.J], nonzero.Val)
 		}
 	}
 }

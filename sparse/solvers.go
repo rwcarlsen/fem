@@ -122,39 +122,57 @@ func NewCholesky(L, A Matrix) *Cholesky {
 	Copy(L, A)
 
 	for k := 0; k < size; k++ {
+		fmt.Printf("------ iter %v ------\n% v\n", k, mat64.Formatted(L))
 		// diag
 		akk := L.At(k, k)
-		for i, val := range L.NonzeroCols(k) {
+		for _, nonzero := range L.SweepRow(k) {
+			i := nonzero.J
+			val := nonzero.Val
 			if i < k {
 				akk -= val * val
 			}
 		}
-		L.Set(k, k, math.Sqrt(akk))
+		akk = math.Sqrt(L.At(k, k))
+		L.Set(k, k, akk)
 
 		// below diag
-		for j, ajk := range L.NonzeroRows(k) {
+		for _, nonzero := range L.SweepCol(k) {
+			i := nonzero.I
+			aik := nonzero.Val
+			if i > k && aik != 0 {
+				fmt.Printf("dividing i,j=%v,%v by akk=%v\n", i, k, akk)
+				nonzero.Val /= akk
+			}
+
+			j := nonzero.I
+			ajk := nonzero.Val
 			if j <= k {
 				continue
 			}
-			for i, aik := range L.NonzeroRows(k) {
-				if i > j {
+			for _, nonzero := range L.SweepCol(k) {
+				i := nonzero.I
+				aik := nonzero.Val
+				if i > k && i > j {
 					aij := L.At(i, j)
+					fmt.Printf("i=%v, j=%v, aij=%v, subtracting=%v\n", i, j, aij, aik*ajk)
 					L.Set(i, j, aij-aik*ajk)
 				}
 			}
 		}
-		for i, aik := range L.NonzeroRows(k) {
-			if i > k && aik != 0 {
-				L.Set(i, k, aik/akk)
-			}
-		}
+		//for _, nonzero := range L.SweepCol(k) {
+		//	i := nonzero.I
+		//	aik := nonzero.Val
+		//	if i > k && aik != 0 {
+		//		nonzero.Val = aik / akk
+		//	}
+		//}
 	}
 
 	// zero out above the diagonal
 	for i := 0; i < size; i++ {
-		for j := range L.NonzeroCols(i) {
-			if j > i {
-				L.Set(i, j, 0)
+		for _, nonzero := range L.SweepRow(i) {
+			if nonzero.J > i {
+				nonzero.Val = 0
 			}
 		}
 	}
@@ -220,12 +238,8 @@ func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 		cg.Preconditioner = IncompleteCholesky(A)
 		//cg.Preconditioner = func(z, r []float64) { copy(z, r) }
 		//cg.Preconditioner = Jacobi(A)
-		//cg.Preconditioner = BlockLU(A, len(A.NonzeroRows(0))*2)
+		//cg.Preconditioner = BlockLU(A, len(A.SweepRow(0))*2)
 	}
-
-	// Force indexing *before* we go concurrent to prevent mutliple goroutines from trying to do
-	// it over the same memory causing corruption.
-	A.Index()
 
 	size := len(b)
 	cg.ndof = size
