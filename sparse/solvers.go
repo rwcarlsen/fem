@@ -223,6 +223,10 @@ func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 		//cg.Preconditioner = BlockLU(A, len(A.NonzeroRows(0))*2)
 	}
 
+	// Force indexing *before* we go concurrent to prevent mutliple goroutines from trying to do
+	// it over the same memory causing corruption.
+	A.Index()
+
 	size := len(b)
 	cg.ndof = size
 
@@ -237,7 +241,7 @@ func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 	cg.Preconditioner(z, r)
 	copy(p, z)
 
-	// save original residual
+	// save original residual for convergence/termination criterion
 	r0 := make([]float64, size)
 	copy(r0, r)
 
@@ -245,7 +249,7 @@ func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 		alpha := dot(r, z) / dot(p, Mul(A, p))
 		vecAdd(x, x, vecMult(p, alpha))             // xnext = x+alpha*p
 		vecSub(rnext, r, vecMult(Mul(A, p), alpha)) // rnext = r-alpha*A*p
-		diff := math.Sqrt(dot(rnext, rnext)) / float64(size)
+		diff := math.Sqrt(dot(rnext, rnext) / dot(r0, r0))
 		if diff < cg.Tol {
 			break
 		}

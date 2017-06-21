@@ -2,6 +2,8 @@ package sparse
 
 import (
 	"math"
+	"runtime"
+	"sync"
 
 	"github.com/gonum/matrix/mat64"
 )
@@ -151,16 +153,43 @@ func (m *Sparse) Set(i, j int, v float64) {
 	m.nonzeroRow[j][i] = v
 }
 
-func Mul(m Matrix, b []float64) []float64 {
-	size := len(b)
-	result := make([]float64, len(b))
-	for i := 0; i < size; i++ {
+func mul(m Matrix, b, result []float64, start, end int) {
+	for i := start; i < end; i++ {
 		tot := 0.0
 		for _, nonzero := range m.SweepRow(i) {
 			tot += b[nonzero.I] * nonzero.Val
 		}
 		result[i] = tot
 	}
+}
+
+func Mul(m Matrix, b []float64) []float64 {
+	size := len(b)
+	result := make([]float64, size)
+
+	nworkers := runtime.NumCPU()
+	blocksize := size / (nworkers - 1)
+
+	if size < 5000 { // run serial for small cases
+		mul(m, b, result, 0, size)
+		return result
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(nworkers)
+	for i := 0; i < nworkers; i++ {
+		start := i * blocksize
+		end := start + blocksize
+		if end > size {
+			end = size
+		}
+
+		go func(start, end int) {
+			mul(m, b, result, start, end)
+			wg.Done()
+		}(start, end)
+	}
+	wg.Wait()
 	return result
 }
 
