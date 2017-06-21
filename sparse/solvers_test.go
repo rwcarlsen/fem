@@ -95,7 +95,6 @@ func testCholesky(size, nfill int) func(t *testing.T) {
 		for i := range got {
 			if math.Abs(got[i]-want.At(i, 0)) > tol {
 				//t.Errorf("A:\n% 3g\nb=%v", mat64.Formatted(s), f)
-				t.Errorf("    condition number of A is %v", mat64.Cond(s, 2))
 				//t.Errorf("solutions don't match:\ngot %v\nwant %v", got, want.RawVector().Data)
 				t.Errorf("    solutions don't match")
 				break
