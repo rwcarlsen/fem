@@ -17,6 +17,7 @@ import (
 	"github.com/rwcarlsen/fem/sparse"
 )
 
+var simplediffusion = flag.Bool("simplediffusion", false, "run 2d simple diffusion instead of other problem")
 var printmats = flag.Bool("print", false, "print stiffness and force matrices")
 var ndivs = flag.Int("n", 5, "number of divisions per dimension in the structured mesh")
 var order = flag.Int("order", 1, "lagrange shape function order")
@@ -47,7 +48,9 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
-	if *dim == 1 {
+	if *simplediffusion {
+		TestSimpleDiffusion()
+	} else if *dim == 1 {
 		TestHeatKernel()
 	} else if *dim == 2 {
 		TestHeatKernel2D()
@@ -263,4 +266,51 @@ func solveProb(mesh *Mesh, k Kernel) {
 	err := mesh.Solve(k)
 	check(err)
 	log.Print(mesh.Solver.Status())
+}
+
+func TestSimpleDiffusion() {
+	low := []float64{0, 0}
+	up := []float64{1, 1}
+
+	xs := []float64{}
+	ys := []float64{}
+	for i := 0; i < *ndivs; i++ {
+		xs = append(xs, float64(i)/float64(*ndivs-1)*1)
+		ys = append(ys, float64(i)/float64(*ndivs-1)*1)
+	}
+
+	mesh, err := NewMeshStructured(*order, xs, ys)
+	check(err)
+
+	// build kernel and boundary conditions
+	boundary := &StructuredBoundary{
+		Tol:      1e-6,
+		Low:      []float64{0, 0},
+		Up:       []float64{1, 1},
+		LowTypes: []BoundaryType{Dirichlet, Interior},
+		UpTypes:  []BoundaryType{Dirichlet, Interior},
+		LowVals:  []float64{0, 0},
+		UpVals:   []float64{15, 0},
+	}
+
+	hc := &HeatConduction{
+		K:        ConstVal(2), // thermal conductivity W/(m*C)
+		S:        ConstVal(0), // volumetric source W/m^3
+		Boundary: boundary,
+	}
+
+	solveProb(mesh, hc)
+
+	var buf bytes.Buffer
+	printSolution(&buf, mesh, low, up)
+
+	if *plot == "" {
+		log.Print("Solution:")
+		fmt.Print(buf.String())
+	} else {
+		cmd := exec.Command("gnuplot", "-e", `set terminal svg; set output "`+*plot+`"; plot "-" u 1:2:3 w image`)
+		cmd.Stdin = &buf
+		err := cmd.Run()
+		check(err)
+	}
 }
