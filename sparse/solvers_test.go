@@ -34,12 +34,13 @@ func TestNewCholesky(t *testing.T) {
 
 	A := makeSparse(size, data)
 	wantL := makeSparse(size, wantdata)
+	t.Logf("\n% v", mat64.Formatted(A))
 
 	chol := NewCholesky(nil, A)
 	for i := 0; i < size; i++ {
 		for j := 0; j < size; j++ {
 			if math.Abs(chol.L.At(i, j)-wantL.At(i, j)) > tol {
-				t.Fatalf("solutions don't match:\ngot\n% .3v\nwant\n% .3v", mat64.Formatted(chol.L), mat64.Formatted(wantL))
+				t.Fatalf("factorizations don't match:\ngot\n% .3v\nwant\n% .3v", mat64.Formatted(chol.L), mat64.Formatted(wantL))
 			}
 		}
 	}
@@ -71,7 +72,7 @@ func TestNewCholesky2(t *testing.T) {
 	for i := 0; i < size; i++ {
 		for j := 0; j < size; j++ {
 			if math.Abs(chol.L.At(i, j)-wantL.At(i, j)) > tol {
-				t.Fatalf("solutions don't match:\ngot\n% .3v\nwant\n% .3v", mat64.Formatted(chol.L), mat64.Formatted(&wantL))
+				t.Fatalf("factorizations don't match:\ngot\n% .3v\nwant\n% .3v", mat64.Formatted(chol.L), mat64.Formatted(&wantL))
 			}
 		}
 	}
@@ -136,7 +137,10 @@ func TestCGSolve(t *testing.T) {
 	t.Logf("converged in %v iterations", cg.niter)
 	for i := range got {
 		if math.Abs(got[i]-want.At(i, 0)) > tol {
-			t.Fatalf("solutions don't match")
+			t.Errorf("solutions don't match")
+			t.Errorf("    got %v", got)
+			t.Errorf("    want %v", want.RawVector().Data)
+			return
 		}
 	}
 	t.Logf("    solver stats:\n%v", cg.Status())
@@ -200,7 +204,7 @@ func TestGaussJordan(t *testing.T) {
 			}
 		}
 		refA := NewSparse(size)
-		refA.Clone(A)
+		Copy(refA, A)
 		refb := make([]float64, len(test.b))
 		copy(refb, test.b)
 
@@ -285,7 +289,7 @@ func TestGaussJordanSym(t *testing.T) {
 			}
 		}
 		refA := NewSparse(size)
-		refA.Clone(A)
+		Copy(refA, A)
 		refb := make([]float64, len(test.b))
 		copy(refb, test.b)
 

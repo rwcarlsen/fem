@@ -9,7 +9,9 @@ import "sort"
 func ApplyPivot(A Matrix, b []float64, col int, piv int, dir int) {
 	pval := A.At(piv, col)
 	bval := b[piv]
-	for i, aij := range A.NonzeroRows(col) {
+	for _, nonzero := range A.SweepCol(col) {
+		i := nonzero.I
+		aij := nonzero.Val
 		cond := ((dir < 0) && i > piv) || ((dir > 0) && i < piv) || (dir == 0 && i != piv)
 		if i != piv && cond {
 			mult := -aij / pval
@@ -68,7 +70,7 @@ func RCM(A Matrix) []int {
 	}
 
 	sort.SliceStable(degreemap, func(i, j int) bool {
-		return len(A.NonzeroCols(degreemap[i])) > len(A.NonzeroCols(degreemap[j]))
+		return len(A.SweepRow(degreemap[i])) > len(A.SweepRow(degreemap[j]))
 	})
 	startrow := degreemap[0]
 
@@ -116,7 +118,8 @@ func nextRCMLevel(A Matrix, mapping map[int]int, ii []int) []int {
 	tmp := []int{}
 	for _, i := range ii {
 		tmp = tmp[:0]
-		for j := range A.NonzeroCols(i) {
+		for _, nonzero := range A.SweepRow(i) {
+			j := nonzero.J
 			if _, ok := mapping[j]; !ok {
 				tmp = append(tmp, j)
 				if len(mapping)+len(tmp) >= size {
@@ -127,7 +130,7 @@ func nextRCMLevel(A Matrix, mapping map[int]int, ii []int) []int {
 
 		// sort tmp and insert into mapping batched by src row
 		sort.SliceStable(tmp, func(i, j int) bool {
-			return len(A.NonzeroCols(tmp[i])) > len(A.NonzeroCols(tmp[j]))
+			return len(A.SweepRow(tmp[i])) > len(A.SweepRow(tmp[j]))
 		})
 		for _, index := range tmp {
 			mapping[index] = len(mapping)

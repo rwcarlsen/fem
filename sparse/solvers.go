@@ -122,42 +122,54 @@ func NewCholesky(L, A Matrix) *Cholesky {
 	Copy(L, A)
 
 	for k := 0; k < size; k++ {
+		//fmt.Printf("------ iter %v ------\n% v\n", k, mat64.Formatted(L))
 		// diag
 		akk := L.At(k, k)
-		for i, val := range L.NonzeroCols(k) {
+		for _, nonzero := range L.SweepRow(k) {
+			i := nonzero.J
+			val := nonzero.Val
 			if i < k {
 				akk -= val * val
 			}
 		}
-		L.Set(k, k, math.Sqrt(akk))
+		akk = math.Sqrt(akk)
+		L.Set(k, k, akk)
 
 		// below diag
-		for j, ajk := range L.NonzeroRows(k) {
+		for _, nonzero := range L.SweepCol(k) {
+			i := nonzero.I
+			if i > k && nonzero.Val != 0 {
+				nonzero.Val /= akk
+			}
+		}
+		for _, nonzero := range L.SweepCol(k) {
+
+			j := nonzero.I
+			ajk := nonzero.Val
 			if j <= k {
 				continue
 			}
-			for i, aik := range L.NonzeroRows(k) {
+			for _, nonzero := range L.SweepCol(k) {
+				i := nonzero.I
+				aik := nonzero.Val
 				if i > j {
 					aij := L.At(i, j)
+					//fmt.Printf("i=%v, j=%v, aij=%v, subtracting=%v\n", i, j, aij, aik*ajk)
 					L.Set(i, j, aij-aik*ajk)
 				}
-			}
-		}
-		for i, aik := range L.NonzeroRows(k) {
-			if i > k && aik != 0 {
-				L.Set(i, k, aik/akk)
 			}
 		}
 	}
 
 	// zero out above the diagonal
 	for i := 0; i < size; i++ {
-		for j := range L.NonzeroCols(i) {
-			if j > i {
-				L.Set(i, j, 0)
+		for _, nonzero := range L.SweepRow(i) {
+			if nonzero.J > i {
+				nonzero.Val = 0
 			}
 		}
 	}
+	//fmt.Printf("------ done ------\n% v\n", mat64.Formatted(L))
 	return &Cholesky{L: L}
 }
 
@@ -165,14 +177,13 @@ func (c *Cholesky) Solve(b []float64) (x []float64, err error) {
 	// Solve Ly = b via forward substitution
 	y := make([]float64, len(b))
 	for i := 0; i < len(b); i++ {
-		nonzeros := c.L.SweepRow(i)
 		tot := 0.0
 		div := 0.0
-		for _, nonzero := range nonzeros {
-			if nonzero.I == i {
+		for _, nonzero := range c.L.SweepRow(i) {
+			if nonzero.J == nonzero.I {
 				div = nonzero.Val
 			}
-			tot += y[nonzero.I] * nonzero.Val
+			tot += y[nonzero.J] * nonzero.Val
 		}
 		y[i] = (b[i] - tot) / div
 	}
@@ -181,11 +192,10 @@ func (c *Cholesky) Solve(b []float64) (x []float64, err error) {
 	x = make([]float64, len(b))
 	for i := len(b) - 1; i >= 0; i-- {
 		// this inversion (SweepCol instead of SweepRow simulates the L->U transpose)
-		nonzeros := c.L.SweepCol(i)
 		tot := 0.0
 		div := 0.0
-		for _, nonzero := range nonzeros {
-			if nonzero.I == i {
+		for _, nonzero := range c.L.SweepCol(i) {
+			if nonzero.I == nonzero.J {
 				div = nonzero.Val
 			}
 			tot += x[nonzero.I] * nonzero.Val
@@ -220,12 +230,8 @@ func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 		cg.Preconditioner = IncompleteCholesky(A)
 		//cg.Preconditioner = func(z, r []float64) { copy(z, r) }
 		//cg.Preconditioner = Jacobi(A)
-		//cg.Preconditioner = BlockLU(A, len(A.NonzeroRows(0))*2)
+		//cg.Preconditioner = BlockLU(A, len(A.SweepRow(0))*2)
 	}
-
-	// Force indexing *before* we go concurrent to prevent mutliple goroutines from trying to do
-	// it over the same memory causing corruption.
-	A.Index()
 
 	size := len(b)
 	cg.ndof = size
