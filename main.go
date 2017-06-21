@@ -287,8 +287,8 @@ func TestSimpleDiffusion() {
 		Tol:      1e-6,
 		Low:      []float64{0, 0},
 		Up:       []float64{1, 1},
-		LowTypes: []BoundaryType{Dirichlet, Interior},
-		UpTypes:  []BoundaryType{Dirichlet, Interior},
+		LowTypes: []BoundaryType{Dirichlet, Neumann},
+		UpTypes:  []BoundaryType{Dirichlet, Neumann},
 		LowVals:  []float64{0, 0},
 		UpVals:   []float64{15, 0},
 	}
