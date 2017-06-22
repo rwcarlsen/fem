@@ -3,6 +3,7 @@ package sparse
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"math"
 
 	"github.com/gonum/matrix/mat64"
@@ -123,7 +124,7 @@ func NewCholesky(L, A Matrix) *Cholesky {
 
 	for k := 0; k < size; k++ {
 		//fmt.Printf("------ iter %v ------\n% v\n", k, mat64.Formatted(L))
-		fmt.Printf("------ iter %v ------\n", k)
+		//fmt.Printf("------ iter %v ------\n", k)
 		// diag
 		akk := L.At(k, k)
 		for _, nonzero := range L.SweepRow(k) {
@@ -134,12 +135,19 @@ func NewCholesky(L, A Matrix) *Cholesky {
 			}
 		}
 		if akk < 0 {
-			fmt.Printf("k=%v, akk=%v\n", k, akk)
+			log.Printf("warning: cholesky factorzation zero'd negative val %v", akk)
+			akk = 0
 		}
 		akk = math.Sqrt(akk)
 		L.Set(k, k, akk)
 
 		// below diag
+		for _, nonzero := range L.SweepCol(k) {
+			i := nonzero.I
+			if i > k && nonzero.Val != 0 {
+				nonzero.Val /= akk
+			}
+		}
 		for _, nonzero := range L.SweepCol(k) {
 
 			j := nonzero.I
@@ -152,15 +160,9 @@ func NewCholesky(L, A Matrix) *Cholesky {
 				aik := nonzero.Val
 				if i > j {
 					aij := L.At(i, j)
-					fmt.Printf("i=%v, j=%v, aij=%v, subtracting=%v\n", i, j, aij, aik*ajk)
+					//fmt.Printf("i=%v, j=%v, aij=%v, subtracting=%v\n", i, j, aij, aik*ajk)
 					L.Set(i, j, aij-aik*ajk)
 				}
-			}
-		}
-		for _, nonzero := range L.SweepCol(k) {
-			i := nonzero.I
-			if i > k && nonzero.Val != 0 {
-				nonzero.Val /= akk
 			}
 		}
 	}

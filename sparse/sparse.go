@@ -71,7 +71,7 @@ type Sparse struct {
 // tolerance of 1e-6 for zero values.
 func NewSparse(size int) *Sparse {
 	return &Sparse{
-		Tol:          1e-6,
+		Tol:          1e-8,
 		nonzeroByRow: make([][]*Nonzero, size),
 		nonzeroByCol: make([][]*Nonzero, size),
 		size:         size,
@@ -159,7 +159,7 @@ func (m *Sparse) Set(i, j int, v float64) {
 		return
 	}
 
-	if math.Abs(v) <= m.Tol {
+	if math.Abs(v) < m.Tol {
 		return
 	}
 

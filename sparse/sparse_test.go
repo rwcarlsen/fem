@@ -19,7 +19,7 @@ func TestSparse(t *testing.T) {
 func randSparse(size, fillPerRow int, off float64) Matrix {
 	s := NewSparse(size)
 	for i := 0; i < size; i++ {
-		s.Set(i, i, 9)
+		s.Set(i, i, float64(fillPerRow))
 	}
 
 	for i := 0; i < size; i++ {
