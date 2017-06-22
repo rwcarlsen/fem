@@ -7,6 +7,56 @@ import (
 	"github.com/gonum/matrix/mat64"
 )
 
+type LU struct {
+	L, U *mat64.Dense
+}
+
+func (lu *LU) Factorize(A mat64.Matrix) {
+	var llu mat64.LU
+	llu.Factorize(A)
+	var l, u mat64.TriDense
+	l.LFromLU(&llu)
+	u.UFromLU(&llu)
+	lu.L = mat64.DenseCopyOf(&l)
+	lu.U = mat64.DenseCopyOf(&u)
+}
+
+func (lu *LU) Solve(b, result []float64) []float64 {
+	if result == nil {
+		result = make([]float64, len(b))
+	}
+
+	// Solve Ly = b via forward substitution
+	y := make([]float64, len(b))
+	for i := 0; i < len(b); i++ {
+		tot := 0.0
+		div := 0.0
+		for j := 0; j < len(b); j++ {
+			if i == j {
+				div = lu.L.At(i, j)
+			} else {
+				tot += y[j] * lu.L.At(i, j)
+			}
+		}
+		y[i] = (b[i] - tot) / div
+	}
+
+	// Solve Ux = y via backward substitution
+	for i := len(b) - 1; i >= 0; i-- {
+		tot := 0.0
+		div := 0.0
+		for j := 0; j < len(b); j++ {
+			if i == j {
+				div = lu.U.At(i, j)
+			} else {
+				tot += result[j] * lu.U.At(i, j)
+			}
+		}
+		result[i] = (y[i] - tot) / div
+	}
+	return result
+}
+
 func QuadLegendre(ndim int, f func([]float64) float64, min, max float64, n int, xs, weights []float64) float64 {
 	if n <= 0 {
 		panic("quad: non-positive number of locations")

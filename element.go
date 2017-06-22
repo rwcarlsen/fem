@@ -463,7 +463,7 @@ type ElementCache struct {
 	// Jacs is meant to cache jacbians for each CoordId. It contains one ndim x ndim matrix for
 	// each CoordId.
 	Jacs    []*mat64.Dense
-	InvJacs []*mat64.LU
+	InvJacs []*LU
 	// HaveJac contains whether or not a jacobian has been cached for a particular CoordId (the
 	// array index)
 	HaveJac []bool
@@ -495,10 +495,10 @@ func (c *ElementCache) Init(ndim, nquadpointsdim int, maxcoordid CoordId) {
 	c.Coords = make([][]float64, maxcoordid)
 	c.HaveJac = make([]bool, maxcoordid)
 	c.Jacs = make([]*mat64.Dense, maxcoordid)
-	c.InvJacs = make([]*mat64.LU, maxcoordid)
+	c.InvJacs = make([]*LU, maxcoordid)
 	for i := range c.Jacs {
 		c.Jacs[i] = mat64.NewDense(ndim, ndim, nil)
-		c.InvJacs[i] = new(mat64.LU)
+		c.InvJacs[i] = new(LU)
 		c.Coords[i] = make([]float64, ndim)
 	}
 
@@ -556,7 +556,7 @@ func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
 // coordinates) to dN/dx and dN/dy (derivatives w.r.t. the real coordinates).
 // This is used to convert the GradU and GradW terms to be the correct values
 // when building the stiffness matrix.
-func ConvertDeriv(jac *mat64.Dense, invjac *mat64.LU, refgradu []float64) {
+func ConvertDeriv(jac *mat64.Dense, invjac *LU, refgradu []float64) {
 	ndim := len(refgradu)
 
 	switch ndim {
@@ -595,11 +595,7 @@ func ConvertDeriv(jac *mat64.Dense, invjac *mat64.LU, refgradu []float64) {
 	default:
 		b := make([]float64, ndim)
 		copy(b, refgradu)
-		soln := mat64.NewVector(ndim, nil)
-		soln.SolveLUVec(invjac, false, mat64.NewVector(ndim, refgradu))
-		for i := range refgradu {
-			refgradu[i] = soln.At(i, 0)
-		}
+		invjac.Solve(b, refgradu)
 	}
 }
 
