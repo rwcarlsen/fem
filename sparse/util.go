@@ -5,8 +5,9 @@ import "sort"
 // ApplyPivot uses the given pivot row to multiply and add to all other rows
 // in A either above or below the pivot (dir = -1 for below pivot and 1 for
 // above pivot) in order to zero out the given column.  The appropriate
-// operations are also performed on b to keep it in sync.
-func ApplyPivot(A Matrix, b []float64, col int, piv int, dir int) {
+// operations are also performed on b to keep it in sync.  If L is not nil, the
+// multipliers used for each row are stored in it.  len(multipliers) should be
+func ApplyPivot(A Matrix, b []float64, col int, piv int, dir int, L Matrix) {
 	pval := A.At(piv, col)
 	bval := b[piv]
 	for _, nonzero := range A.SweepCol(col) {
@@ -15,10 +16,14 @@ func ApplyPivot(A Matrix, b []float64, col int, piv int, dir int) {
 		cond := ((dir < 0) && i > piv) || ((dir > 0) && i < piv) || (dir == 0 && i != piv)
 		if i != piv && cond {
 			mult := -aij / pval
+			if L != nil {
+				L.Set(i, col, mult)
+			}
 			RowCombination(A, piv, i, mult)
 			b[i] += bval * mult
 		}
 	}
+	return mult
 }
 
 func vecAdd(result, a, b []float64) {

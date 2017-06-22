@@ -210,8 +210,8 @@ func (m *Mesh) Solve(k Kernel) error {
 	// eliminate nonzeros in all columns of known/dirichlet dofs.
 	knowns := m.knowns(k)
 	for i := range knowns {
-		sparse.ApplyPivot(A, b, i, i, -1)
-		sparse.ApplyPivot(A, b, i, i, 1)
+		sparse.ApplyPivot(A, b, i, i, -1, nil)
+		sparse.ApplyPivot(A, b, i, i, 1, nil)
 	}
 
 	// remove knowns (i.e. dirichlet BCs) from matrix system to preserve symmetry
