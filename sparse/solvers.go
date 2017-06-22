@@ -3,7 +3,6 @@ package sparse
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"math"
 
 	"github.com/gonum/matrix/mat64"
@@ -135,8 +134,7 @@ func NewCholesky(L, A Matrix) *Cholesky {
 			}
 		}
 		if akk < 0 {
-			log.Printf("warning: cholesky factorzation zero'd negative val %v", akk)
-			akk = 0
+			panic(fmt.Sprintf("cholesky factorzation zero'd reversed val %v", akk))
 		}
 		akk = math.Sqrt(akk)
 		L.Set(k, k, akk)
