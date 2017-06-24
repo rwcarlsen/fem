@@ -9,6 +9,7 @@ import (
 
 type LU struct {
 	L, U *mat64.Dense
+	y    []float64
 }
 
 func (lu *LU) Factorize(A mat64.Matrix) {
@@ -19,6 +20,8 @@ func (lu *LU) Factorize(A mat64.Matrix) {
 	u.UFromLU(&llu)
 	lu.L = mat64.DenseCopyOf(&l)
 	lu.U = mat64.DenseCopyOf(&u)
+	size, _ := A.Dims()
+	lu.y = make([]float64, size)
 }
 
 func (lu *LU) Solve(b, result []float64) []float64 {
@@ -27,7 +30,6 @@ func (lu *LU) Solve(b, result []float64) []float64 {
 	}
 
 	// Solve Ly = b via forward substitution
-	y := make([]float64, len(b))
 	for i := 0; i < len(b); i++ {
 		tot := 0.0
 		div := 0.0
@@ -35,10 +37,10 @@ func (lu *LU) Solve(b, result []float64) []float64 {
 			if i == j {
 				div = lu.L.At(i, j)
 			} else {
-				tot += y[j] * lu.L.At(i, j)
+				tot += lu.y[j] * lu.L.At(i, j)
 			}
 		}
-		y[i] = (b[i] - tot) / div
+		lu.y[i] = (b[i] - tot) / div
 	}
 
 	// Solve Ux = y via backward substitution
@@ -52,7 +54,7 @@ func (lu *LU) Solve(b, result []float64) []float64 {
 				tot += result[j] * lu.U.At(i, j)
 			}
 		}
-		result[i] = (y[i] - tot) / div
+		result[i] = (lu.y[i] - tot) / div
 	}
 	return result
 }

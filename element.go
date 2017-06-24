@@ -153,15 +153,16 @@ func InterpolateDeriv(e Element, refx []float64) []float64 {
 //
 // ...the partial derivatives of the real coordinates w.r.t. the reference coordinates.  This is
 // used for things like ratio multipliers to convert integrals in the reference coordinates to
-// integrals in the real coordinates.
-func Jacobian(e Element, refxs []float64, id CoordId) *mat64.Dense {
+// integrals in the real coordinates. It also returns the determinant of the
+// jacobian.
+func Jacobian(e Element, refxs []float64, id CoordId) (*mat64.Dense, float64) {
 	ndim := len(refxs)
 	var mat *mat64.Dense
 	cache := e.Cache()
 	var deriv []float64
 	if cache != nil {
 		if cache.HaveJac[id] {
-			return cache.Jacs[id]
+			return cache.Jacs[id], cache.JacDets[id]
 		}
 		cache.HaveJac[id] = true
 		deriv = cache.SliceNDim
@@ -187,10 +188,12 @@ func Jacobian(e Element, refxs []float64, id CoordId) *mat64.Dense {
 		}
 	}
 
+	jacdet := det(mat)
 	if cache != nil {
 		cache.InvJacs[id].Factorize(mat)
+		cache.JacDets[id] = jacdet
 	}
-	return mat
+	return mat, jacdet
 }
 
 // PrintFunc prints the element value and derivative in tab-separated form
@@ -403,12 +406,11 @@ func (e *ElementND) integrateVol(k Kernel, wNode, uNode int) float64 {
 	fn := func(refxs []float64) float64 {
 		e.Coord(e.cache.Pars.X, refxs, locid)
 
-		jac := Jacobian(e, refxs, locid)
+		jac, jacdet := Jacobian(e, refxs, locid)
 		// determinant of jacobian to convert from ref element integral to
 		// real coord integral:
 		//     J = | dx/de  dy/de |
 		//         | dx/dn  dy/dn |
-		jacdet := det(jac)
 
 		var w, u *Node = e.Nds[wNode], nil
 		e.cache.Pars.W = w.Weight(refxs, locid)
@@ -464,6 +466,7 @@ type ElementCache struct {
 	// each CoordId.
 	Jacs    []*mat64.Dense
 	InvJacs []*LU
+	JacDets []float64
 	// HaveJac contains whether or not a jacobian has been cached for a particular CoordId (the
 	// array index)
 	HaveJac []bool
@@ -495,6 +498,7 @@ func (c *ElementCache) Init(ndim, nquadpointsdim int, maxcoordid CoordId) {
 	c.Coords = make([][]float64, maxcoordid)
 	c.HaveJac = make([]bool, maxcoordid)
 	c.Jacs = make([]*mat64.Dense, maxcoordid)
+	c.JacDets = make([]float64, maxcoordid)
 	c.InvJacs = make([]*LU, maxcoordid)
 	for i := range c.Jacs {
 		c.Jacs[i] = mat64.NewDense(ndim, ndim, nil)
@@ -530,7 +534,7 @@ func (fi *FaceIntegrator) Func(partialrefxs []float64) float64 {
 		}
 	}
 
-	jac := Jacobian(fi.Elem, refxs, loc)
+	jac, _ := Jacobian(fi.Elem, refxs, loc)
 	jacdet := faceArea(fi.FixedDim, jac)
 
 	pars := &KernelParams{}
