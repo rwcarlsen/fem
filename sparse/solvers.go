@@ -14,16 +14,18 @@ type Solver interface {
 	Status() string
 }
 
-// Preconditioner is a function that takes a (e.g. resitual) vector r and
+type Preconditioner func(A Matrix) PreconditionerFunc
+
+// PreconditionerFunc is a function that takes a (e.g. resitual) vector r and
 // applies a preconditioning matrix to it and stores the result in z.
-type Preconditioner func(z, r []float64)
+type PreconditionerFunc func(z, r []float64)
 
 // IncompleteCholesky returns a preconditioner that uses an incomplete
 // cholesky factorization (incomplete via maintaining the same sparsity
 // pattern as the matrix A).  The factorization is then used to solve for z in
 // the system A*z=r for the preconditioner - i.e. for the preconditioning
 // M^(-1)*r, M is the incomplete cholesky factorization.
-func IncompleteCholesky(A Matrix) Preconditioner {
+func IncompleteCholesky(A Matrix) PreconditionerFunc {
 	size, _ := A.Dims()
 	chol := NewCholesky(RestrictByPattern{Matrix: NewSparse(size), Pattern: A}, A)
 
@@ -36,7 +38,7 @@ func IncompleteCholesky(A Matrix) Preconditioner {
 	}
 }
 
-func Jacobi(A Matrix) Preconditioner {
+func Jacobi(A Matrix) PreconditionerFunc {
 	size, _ := A.Dims()
 	diag := make([]float64, size)
 	for i := range diag {
@@ -50,7 +52,7 @@ func Jacobi(A Matrix) Preconditioner {
 	}
 }
 
-func BlockLU(A Matrix, blocksize int) Preconditioner {
+func BlockLU(A Matrix, blocksize int) PreconditionerFunc {
 	size, _ := A.Dims()
 	end := 0
 	lus := []*mat64.LU{}
@@ -127,18 +129,9 @@ func (cg *CG) Status() string {
 }
 
 func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
-	if cg.Preconditioner == nil {
-		lu := &LU{
-			L: RestrictByPattern{Matrix: NewSparse(len(b)), Pattern: A},
-			U: RestrictByPattern{Matrix: NewSparse(len(b)), Pattern: A},
-		}
-		lu.Factorize(A)
-		cg.Preconditioner = lu.Preconditioner()
-
-		//cg.Preconditioner = func(z, r []float64) { copy(z, r) }
-		//cg.Preconditioner = IncompleteCholesky(A)
-		//cg.Preconditioner = Jacobi(A)
-		//cg.Preconditioner = BlockLU(A, len(A.SweepRow(0))*2)
+	precon := func(z, r []float64) { copy(z, r) }
+	if cg.Preconditioner != nil {
+		precon = cg.Preconditioner(A)
 	}
 
 	size := len(b)
@@ -152,7 +145,7 @@ func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 	znext := make([]float64, size)
 
 	vecSub(r, b, Mul(A, x))
-	cg.Preconditioner(z, r)
+	precon(z, r)
 	copy(p, z)
 
 	// save original residual for convergence/termination criterion
@@ -168,7 +161,7 @@ func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 		if diff < cg.Tol {
 			break
 		}
-		cg.Preconditioner(znext, rnext)
+		precon(znext, rnext)
 		beta := dot(znext, rnext) / dot(z, r)
 		vecAdd(p, znext, vecMult(p, beta)) // pnext = rnext + beta*p
 		r, rnext = rnext, r

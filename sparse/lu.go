@@ -1,5 +1,17 @@
 package sparse
 
+func IncompleteLU(A Matrix) PreconditionerFunc {
+	size, _ := A.Dims()
+	lu := &LU{
+		L: RestrictByPattern{Matrix: NewSparse(size), Pattern: A},
+		U: RestrictByPattern{Matrix: NewSparse(size), Pattern: A},
+	}
+	lu.Factorize(A)
+	return func(z, r []float64) {
+		lu.Solve(r, z)
+	}
+}
+
 // LU performs holds an LU factorization for a matrix A used for solving Ax=b.
 type LU struct {
 	L, U Matrix
@@ -23,10 +35,6 @@ func (lu *LU) Factorize(A Matrix) *LU {
 	}
 
 	return lu
-}
-
-func (lu *LU) Preconditioner() Preconditioner {
-	return func(z, r []float64) { lu.Solve(r, z) }
 }
 
 func (lu *LU) Solve(b, result []float64) ([]float64, error) {

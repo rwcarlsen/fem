@@ -25,6 +25,7 @@ var iter = flag.Int("iter", 1000, "number of iterations for solve (default=direc
 var usertol = flag.Float64("tol", 1e-5, "l2 norm consecutive iterative soln diff threshold")
 var nsoln = flag.Int("nsol", 4, "number of uniformly distributed points to sample+print solution over")
 var solver = flag.String("solver", "cg", "solver type (gaussian, denselu, cg)")
+var pc = flag.String("pc", "ilu", "preconditioner type (ilu, none)")
 var dim = flag.Int("dim", 1, "dimesionality of sample problem - either 1 or 2")
 
 var plot = flag.String("plot", "", "'svg' to create svg plot with gnuplot")
@@ -252,11 +253,22 @@ func solveProb(mesh *Mesh, k Kernel) {
 		fmt.Printf("force:\n% .3v\n", force)
 	}
 
+	var precon sparse.Preconditioner
+	switch *pc {
+	case "ilu":
+		precon = sparse.IncompleteLU
+	case "none":
+	default:
+		log.Fatalf("invalid preconditioner type")
+	}
+
 	switch *solver {
 	case "gaussian":
 		mesh.Solver = sparse.GaussJordan{}
 	case "cg":
-		mesh.Solver = &sparse.CG{MaxIter: *iter, Tol: *usertol}
+		cg := &sparse.CG{MaxIter: *iter, Tol: *usertol}
+		cg.Preconditioner = precon
+		mesh.Solver = cg
 	case "denselu":
 		mesh.Solver = sparse.DenseLU{}
 	default:
