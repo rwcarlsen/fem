@@ -158,7 +158,7 @@ func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 		vecSub(rnext, r, vecMult(Mul(A, p), alpha)) // rnext = r-alpha*A*p
 		diff := math.Sqrt(dot(rnext, rnext) / dot(r0, r0))
 		log.Printf("iter %v residual = %v (%.5v/%.5v)", cg.niter, diff, dot(rnext, rnext), dot(r0, r0))
-		if diff < cg.Tol {
+		if dot(rnext, rnext) == 0 || diff < cg.Tol {
 			break
 		}
 		precon(znext, rnext)
