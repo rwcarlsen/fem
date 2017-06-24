@@ -315,16 +315,16 @@ func (m *Mesh) StiffnessMatrix(k Kernel) *sparse.Sparse {
 			a := m.nodeId(e, i)
 			for j := i; j < len(elem.Nodes()); j++ {
 				b := m.nodeId(e, j)
-				if ok, _ := k.IsDirichlet(n.X); ok {
-					for _, nonzero := range mat.SweepRow(a) {
-						mat.Set(a, nonzero.J, 0.0)
-					}
-					mat.Set(a, a, 1.0)
-					continue
-				}
 				v := elem.IntegrateStiffness(k, i, j, m.notEdges[e])
 				mat.Set(a, b, mat.At(a, b)+v)
 				mat.Set(b, a, mat.At(a, b))
+			}
+			if ok, _ := k.IsDirichlet(n.X); ok {
+				for _, nonzero := range mat.SweepRow(a) {
+					nonzero.Val = 0
+				}
+				mat.Set(a, a, 1.0)
+				continue
 			}
 		}
 	}
