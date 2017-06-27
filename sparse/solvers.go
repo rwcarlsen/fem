@@ -118,13 +118,18 @@ type CG struct {
 	Preconditioner Preconditioner
 	niter          int
 	ndof           int
+	err            float64
 }
 
 func (cg *CG) Status() string {
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "CG Solver Stats:\n")
 	fmt.Fprintf(&buf, "    %v dof\n", cg.ndof)
-	fmt.Fprintf(&buf, "    converged in %v iterations", cg.niter)
+	if cg.err <= cg.Tol {
+		fmt.Fprintf(&buf, "    converged in %v iterations", cg.niter)
+	} else {
+		fmt.Fprintf(&buf, "    failed to converge after %v iterations", cg.niter)
+	}
 	return buf.String()
 }
 
@@ -156,9 +161,9 @@ func (cg *CG) Solve(A Matrix, b []float64) (x []float64, err error) {
 		alpha := dot(r, z) / dot(p, Mul(A, p))
 		vecAdd(x, x, vecMult(p, alpha))             // xnext = x+alpha*p
 		vecSub(rnext, r, vecMult(Mul(A, p), alpha)) // rnext = r-alpha*A*p
-		diff := math.Sqrt(dot(rnext, rnext) / dot(r0, r0))
-		log.Printf("iter %v residual = %v (%.5v/%.5v)", cg.niter, diff, dot(rnext, rnext), dot(r0, r0))
-		if dot(rnext, rnext) == 0 || diff < cg.Tol {
+		cg.err = math.Sqrt(dot(rnext, rnext) / dot(r0, r0))
+		log.Printf("iter %v residual = %v (%.5v/%.5v)", cg.niter, cg.err, dot(rnext, rnext), dot(r0, r0))
+		if dot(rnext, rnext) == 0 || cg.err < cg.Tol {
 			break
 		}
 		precon(znext, rnext)
