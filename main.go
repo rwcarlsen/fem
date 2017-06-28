@@ -259,6 +259,9 @@ func solveProb(mesh *Mesh, k Kernel) {
 		precon = sparse.IncompleteLU
 	case "jacobi":
 		precon = sparse.Jacobi
+	case "blocklu":
+		blocksize := 50
+		precon = sparse.BlockLU(blocksize)
 	case "none":
 	default:
 		log.Fatalf("invalid preconditioner type")

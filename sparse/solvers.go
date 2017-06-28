@@ -52,58 +52,60 @@ func Jacobi(A Matrix) PreconditionerFunc {
 	}
 }
 
-func BlockLU(A Matrix, blocksize int) PreconditionerFunc {
-	size, _ := A.Dims()
-	end := 0
-	lus := []*mat64.LU{}
-
-	//fmt.Printf("A=\n% .2v\n", mat64.Formatted(A))
-	for start := 0; end < size; start += blocksize {
-		end = start + blocksize
-		if end > size {
-			end = size
-		}
-		n := end - start
-
-		Asub := mat64.NewDense(n, n, nil)
-		ii := 0
-		for i := start; i < end; i++ {
-			jj := 0
-			for j := start; j < end; j++ {
-				Asub.Set(ii, jj, A.At(i, j))
-				jj++
-			}
-			ii++
-		}
-		//fmt.Printf("Asub=\n% .2v\n", mat64.Formatted(Asub))
-		var lu mat64.LU
-		lu.Factorize(Asub)
-		lus = append(lus, &lu)
-
-		var u mat64.Vector
-		b := mat64.NewVector(n, nil)
-		for i := 0; i < n; i++ {
-			b.SetVec(i, 1)
-		}
-		u.SolveVec(Asub, b)
-		//fmt.Printf("Ax=b soln:\n% .2v\n", mat64.Formatted(&u))
-	}
-
-	return func(z, r []float64) {
-		i := 0
-		u := mat64.NewVector(size, z)
-		b := mat64.NewVector(size, r)
+func BlockLU(blocksize int) Preconditioner {
+	return func(A Matrix) PreconditionerFunc {
+		size, _ := A.Dims()
 		end := 0
+		lus := []*mat64.LU{}
+
+		//fmt.Printf("A=\n% .2v\n", mat64.Formatted(A))
 		for start := 0; end < size; start += blocksize {
 			end = start + blocksize
 			if end > size {
 				end = size
 			}
-			subu := u.SliceVec(start, end)
-			subb := b.SliceVec(start, end)
-			subu.SolveLUVec(lus[i], false, subb)
-			//fmt.Printf("iterating Ax=b soln:\n% .2v\n", mat64.Formatted(u))
-			i++
+			n := end - start
+
+			Asub := mat64.NewDense(n, n, nil)
+			ii := 0
+			for i := start; i < end; i++ {
+				jj := 0
+				for j := start; j < end; j++ {
+					Asub.Set(ii, jj, A.At(i, j))
+					jj++
+				}
+				ii++
+			}
+			//fmt.Printf("Asub=\n% .2v\n", mat64.Formatted(Asub))
+			var lu mat64.LU
+			lu.Factorize(Asub)
+			lus = append(lus, &lu)
+
+			var u mat64.Vector
+			b := mat64.NewVector(n, nil)
+			for i := 0; i < n; i++ {
+				b.SetVec(i, 1)
+			}
+			u.SolveVec(Asub, b)
+			//fmt.Printf("Ax=b soln:\n% .2v\n", mat64.Formatted(&u))
+		}
+
+		return func(z, r []float64) {
+			i := 0
+			u := mat64.NewVector(size, z)
+			b := mat64.NewVector(size, r)
+			end := 0
+			for start := 0; end < size; start += blocksize {
+				end = start + blocksize
+				if end > size {
+					end = size
+				}
+				subu := u.SliceVec(start, end)
+				subb := b.SliceVec(start, end)
+				subu.SolveLUVec(lus[i], false, subb)
+				//fmt.Printf("iterating Ax=b soln:\n% .2v\n", mat64.Formatted(u))
+				i++
+			}
 		}
 	}
 }
