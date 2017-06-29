@@ -27,6 +27,7 @@ var nsoln = flag.Int("nsol", 4, "number of uniformly distributed points to sampl
 var solver = flag.String("solver", "cg", "solver type (gaussian, denselu, cg)")
 var pc = flag.String("pc", "ilu", "preconditioner type (ilu, jacobi, none)")
 var dim = flag.Int("dim", 1, "dimesionality of sample problem - either 1 or 2")
+var transient = flag.Bool("transient", false, "run a sample transient 1D+time problem")
 
 var plot = flag.String("plot", "", "'svg' to create svg plot with gnuplot")
 
@@ -49,7 +50,9 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
-	if *simplediffusion {
+	if *transient {
+		TestHeatKernelTransient()
+	} else if *simplediffusion {
 		TestSimpleDiffusion()
 	} else if *dim == 1 {
 		TestHeatKernel()
@@ -76,6 +79,58 @@ func main() {
 func check(err error) {
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func TestHeatKernelTransient() {
+	ts := []float64{}
+	xs := []float64{}
+	for i := 0; i < *ndivs; i++ {
+		ts = append(xs, float64(i)/float64(*ndivs-1)*4)
+		xs = append(xs, float64(i)/float64(*ndivs-1)*4)
+	}
+
+	b := &RangeBoundary{Tol: 1e-9}
+	b.Add([]float64{0, 0}, []float64{0, 4}, Dirichlet, 0)  // initial condition
+	b.Add([]float64{0, 0}, []float64{4, 0}, Dirichlet, 10) // left boundary condition (deg C)
+	b.Add([]float64{0, 4}, []float64{4, 4}, Neumann, 30)   // right boundary condition (W/m^2)
+
+	pts := [][]float64{{0, 0}, {0, 2}, {0, 4}, {2, 4}, {4, 4}, {4, 2}, {4, 0}, {2, 0}, {2, 2}}
+	for _, p := range pts {
+		fmt.Printf("bc[%v]=%v\n", p, b.Val(p))
+		switch b.Type(p) {
+		case Interior:
+			fmt.Println("    Interior")
+		case Dirichlet:
+			fmt.Println("    Dirichlet")
+		case Neumann:
+			fmt.Println("    Neumann")
+		}
+	}
+
+	hc := &TimeHeatConduction{
+		Conductivity: ConstVal(2),    // W/(m*K)
+		Source:       ConstVal(1000), // W/m^3
+		Density:      ConstVal(1000), // kg/m^3
+		SpecificHeat: ConstVal(1),    // J/kg/K
+		Boundary:     b,
+	}
+
+	mesh, err := NewMeshStructured(*order, ts, xs)
+	check(err)
+
+	solveProb(mesh, hc)
+	var buf bytes.Buffer
+	printSolution(&buf, mesh, []float64{ts[0], xs[0]}, []float64{ts[len(ts)-1], xs[len(xs)-1]})
+
+	if *plot == "" {
+		log.Print("Solution:")
+		fmt.Print(buf.String())
+	} else {
+		cmd := exec.Command("gnuplot", "-e", `set terminal svg; set output "`+*plot+`"; plot "-" u 1:2:3 w image`)
+		cmd.Stdin = &buf
+		err := cmd.Run()
+		check(err)
 	}
 }
 

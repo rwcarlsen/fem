@@ -1,6 +1,9 @@
 package main
 
-import "math"
+import (
+	"fmt"
+	"math"
+)
 
 type BoundaryType int
 
@@ -13,6 +16,64 @@ const (
 type Boundary interface {
 	Type(x []float64) BoundaryType
 	Val(x []float64) float64
+}
+
+type Range struct {
+	Low []float64
+	Up  []float64
+}
+
+type RangeBoundary struct {
+	Low   [][]float64
+	Up    [][]float64
+	Types []BoundaryType
+	Vals  []float64
+	Tol   float64
+}
+
+func (r *RangeBoundary) Add(low, up []float64, t BoundaryType, val float64) {
+	r.Low = append(r.Low, low)
+	r.Up = append(r.Up, up)
+	r.Types = append(r.Types, t)
+	r.Vals = append(r.Vals, val)
+}
+
+func (r *RangeBoundary) index(x []float64) int {
+outer:
+	for i := range r.Low {
+		low, up := r.Low[i], r.Up[i]
+		for d, xx := range x {
+			l, u := low[d], up[d]
+			if xx < l-r.Tol || u+r.Tol < xx {
+				continue outer
+			}
+		}
+		return i
+	}
+	return -1
+}
+
+func (r *RangeBoundary) Type(x []float64) BoundaryType {
+	index := r.index(x)
+	if index == -1 {
+		fmt.Printf("BoundaryType%v=Interior\n", x)
+		return Interior
+	}
+	switch r.Types[index] {
+	case Neumann:
+		fmt.Printf("BoundaryType%v=Neumann\n", x)
+	case Dirichlet:
+		fmt.Printf("BoundaryType%v=Dirichlet\n", x)
+	}
+	return r.Types[index]
+}
+
+func (r *RangeBoundary) Val(x []float64) float64 {
+	index := r.index(x)
+	if index == -1 {
+		return 0
+	}
+	return r.Vals[index]
 }
 
 type StructuredBoundary struct {
@@ -262,14 +323,13 @@ func (p *SecVal) Val(x []float64) float64 {
 	return p.Y[len(p.Y)-1]
 }
 
-// HeatConduction implements 1D heat conduction physics.
-// TODO: update the Boundary... methods to handle multi-dimensions
+// HeatConduction implements heat conduction physics.
 type HeatConduction struct {
 	// K is thermal conductivity (W/m/K).
 	K Valer
 	// S is heat source strength (W/m^3).
 	S Valer
-	// Boundary holds the non-dirichlet boundary conditions for the problem.
+	// Boundary holds boundary conditions for the problem.
 	Boundary Boundary
 }
 
@@ -288,5 +348,39 @@ func (hc *HeatConduction) VolInt(p *KernelParams) float64 {
 func (hc *HeatConduction) BoundaryIntU(p *KernelParams) float64 { return 0 }
 
 func (hc *HeatConduction) BoundaryInt(p *KernelParams) float64 {
+	return p.W * hc.Boundary.Val(p.X)
+}
+
+// TimeHeatConduction implements heat conduction physics with time as the first dimension.
+type TimeHeatConduction struct {
+	// Conductivity is thermal conductivity (W/m/K).
+	Conductivity Valer
+	// S is heat source strength (W/m^3).
+	Source Valer
+	// Density is material density (kg/m^3).
+	Density Valer
+	// SpecificHeat is the material specific heat (J/kg/K).
+	SpecificHeat Valer
+	// Boundary holds the boundary conditions for the problem.
+	Boundary Boundary
+}
+
+func (hc *TimeHeatConduction) IsDirichlet(x []float64) (bool, float64) {
+	return hc.Boundary.Type(x) == Dirichlet, hc.Boundary.Val(x)
+}
+
+func (hc *TimeHeatConduction) VolIntU(p *KernelParams) float64 {
+	spatial := Dot(p.GradW[1:], p.GradU[1:]) * hc.Conductivity.Val(p.X)
+	time := 1 * hc.Density.Val(p.X) * hc.SpecificHeat.Val(p.X) * p.GradU[0]
+	return spatial + time
+}
+
+func (hc *TimeHeatConduction) VolInt(p *KernelParams) float64 {
+	return p.W * hc.Source.Val(p.X)
+}
+
+func (hc *TimeHeatConduction) BoundaryIntU(p *KernelParams) float64 { return 0 }
+
+func (hc *TimeHeatConduction) BoundaryInt(p *KernelParams) float64 {
 	return p.W * hc.Boundary.Val(p.X)
 }
