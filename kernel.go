@@ -1,9 +1,6 @@
 package main
 
-import (
-	"fmt"
-	"math"
-)
+import "math"
 
 type BoundaryType int
 
@@ -56,14 +53,7 @@ outer:
 func (r *RangeBoundary) Type(x []float64) BoundaryType {
 	index := r.index(x)
 	if index == -1 {
-		fmt.Printf("BoundaryType%v=Interior\n", x)
 		return Interior
-	}
-	switch r.Types[index] {
-	case Neumann:
-		fmt.Printf("BoundaryType%v=Neumann\n", x)
-	case Dirichlet:
-		fmt.Printf("BoundaryType%v=Dirichlet\n", x)
 	}
 	return r.Types[index]
 }
@@ -371,7 +361,7 @@ func (hc *TimeHeatConduction) IsDirichlet(x []float64) (bool, float64) {
 
 func (hc *TimeHeatConduction) VolIntU(p *KernelParams) float64 {
 	spatial := Dot(p.GradW[1:], p.GradU[1:]) * hc.Conductivity.Val(p.X)
-	time := 1 * hc.Density.Val(p.X) * hc.SpecificHeat.Val(p.X) * p.GradU[0]
+	time := p.W * hc.Density.Val(p.X) * hc.SpecificHeat.Val(p.X) * p.GradU[0]
 	return spatial + time
 }
 

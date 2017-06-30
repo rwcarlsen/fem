@@ -91,9 +91,9 @@ func TestHeatKernelTransient() {
 	}
 
 	b := &RangeBoundary{Tol: 1e-9}
-	b.Add([]float64{0, 0}, []float64{0, 4}, Dirichlet, 0)  // initial condition
-	b.Add([]float64{0, 0}, []float64{4, 0}, Dirichlet, 10) // left boundary condition (deg C)
-	b.Add([]float64{0, 4}, []float64{4, 4}, Neumann, 30)   // right boundary condition (W/m^2)
+	b.Add([]float64{0, 0}, []float64{0, 4}, Dirichlet, 0) // initial condition
+	b.Add([]float64{0, 0}, []float64{4, 0}, Dirichlet, 0) // left boundary condition (deg C)
+	b.Add([]float64{0, 4}, []float64{4, 4}, Neumann, 5)   // right boundary condition (W/m^2)
 
 	pts := [][]float64{{0, 0}, {0, 2}, {0, 4}, {2, 4}, {4, 4}, {4, 2}, {4, 0}, {2, 0}, {2, 2}}
 	for _, p := range pts {
@@ -108,11 +108,11 @@ func TestHeatKernelTransient() {
 		}
 	}
 
-	hc := &TimeHeatConduction{
-		Conductivity: ConstVal(2),    // W/(m*K)
-		Source:       ConstVal(1000), // W/m^3
+	hc := &TimeHeatConduction{ // properties are for water ish
 		Density:      ConstVal(1000), // kg/m^3
-		SpecificHeat: ConstVal(1),    // J/kg/K
+		SpecificHeat: ConstVal(4181), // J/kg/K
+		Conductivity: ConstVal(2),    // W/(m*K)
+		Source:       ConstVal(50),   // W/m^3
 		Boundary:     b,
 	}
 
@@ -120,6 +120,10 @@ func TestHeatKernelTransient() {
 	check(err)
 
 	solveProb(mesh, hc)
+	if *printmats {
+		return
+	}
+
 	var buf bytes.Buffer
 	printSolution(&buf, mesh, []float64{ts[0], xs[0]}, []float64{ts[len(ts)-1], xs[len(xs)-1]})
 
@@ -303,9 +307,10 @@ func printSolution(w io.Writer, mesh *Mesh, min, max []float64) {
 func solveProb(mesh *Mesh, k Kernel) {
 	if *printmats {
 		stiffness := mesh.StiffnessMatrix(k)
-		fmt.Printf("stiffness:\n% .3v\n", mat64.Formatted(stiffness))
+		fmt.Printf("stiffness:\n% .2v\n", mat64.Formatted(stiffness))
 		force := mesh.ForceVector(k)
-		fmt.Printf("force:\n% .3v\n", force)
+		fmt.Printf("force:\n% .2v\n", force)
+		return
 	}
 
 	var precon sparse.Preconditioner
