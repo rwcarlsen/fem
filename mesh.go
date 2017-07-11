@@ -240,6 +240,9 @@ func (m *Mesh) Solve(k Kernel) error {
 		}
 	}
 
+	//fmt.Printf("condition number is %v\n", mat64.Cond(AA, 1))
+	//fmt.Printf("AA=\n% .2v\n", mat64.Formatted(AA))
+
 	// solve symmetric system
 	x, err := solver.Solve(AA, bb)
 	if err != nil {

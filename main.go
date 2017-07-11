@@ -85,17 +85,22 @@ func check(err error) {
 func TestHeatKernelTransient() {
 	ts := []float64{}
 	xs := []float64{}
+	const tmin, tmax = 0, 400
+	const xmin, xmax = 0, 4
 	for i := 0; i < *ndivs; i++ {
-		ts = append(xs, float64(i)/float64(*ndivs-1)*4)
-		xs = append(xs, float64(i)/float64(*ndivs-1)*4)
+		ts = append(xs, float64(i)/float64(*ndivs-1)*(tmax-tmin))
+		xs = append(xs, float64(i)/float64(*ndivs-1)*(xmax-xmin))
 	}
 
 	b := &RangeBoundary{Tol: 1e-9}
-	b.Add([]float64{0, 0}, []float64{0, 4}, Dirichlet, 0) // initial condition
-	b.Add([]float64{0, 0}, []float64{4, 0}, Dirichlet, 0) // left boundary condition (deg C)
-	b.Add([]float64{0, 4}, []float64{4, 4}, Neumann, 5)   // right boundary condition (W/m^2)
+	// boundary conditions (dirichlet are deg C and neumann are W/m^2).
+	b.Add([]float64{tmin, 0}, []float64{tmin, 4}, Dirichlet, 0) // initial condition
+	b.Add([]float64{tmin, 0}, []float64{tmax, 0}, Dirichlet, 0) // left boundary
+	b.Add([]float64{tmin, 4}, []float64{tmax, 4}, Dirichlet, 0) // right boundary
 
-	pts := [][]float64{{0, 0}, {0, 2}, {0, 4}, {2, 4}, {4, 4}, {4, 2}, {4, 0}, {2, 0}, {2, 2}}
+	xmid := (xmax - xmin) / 2.
+	tmid := (tmax - tmin) / 2.
+	pts := [][]float64{{tmin, xmin}, {tmin, xmid}, {tmin, xmax}, {tmid, xmax}, {tmax, xmax}, {tmax, xmid}, {tmax, xmin}, {tmid, 0}, {tmid, xmid}}
 	for _, p := range pts {
 		fmt.Printf("bc[%v]=%v\n", p, b.Val(p))
 		switch b.Type(p) {
@@ -109,10 +114,10 @@ func TestHeatKernelTransient() {
 	}
 
 	hc := &TimeHeatConduction{ // properties are for water ish
-		Density:      ConstVal(1000), // kg/m^3
-		SpecificHeat: ConstVal(4181), // J/kg/K
-		Conductivity: ConstVal(2),    // W/(m*K)
-		Source:       ConstVal(50),   // W/m^3
+		Density:      ConstVal(1), // kg/m^3
+		SpecificHeat: ConstVal(1), // J/kg/K
+		Conductivity: ConstVal(1), // W/(m*K)
+		Source:       ConstVal(1), // W/m^3
 		Boundary:     b,
 	}
 
