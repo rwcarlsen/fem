@@ -88,36 +88,21 @@ func TestHeatKernelTransient() {
 	const tmin, tmax = 0, 400
 	const xmin, xmax = 0, 4
 	for i := 0; i < *ndivs; i++ {
-		ts = append(xs, float64(i)/float64(*ndivs-1)*(tmax-tmin))
+		ts = append(ts, float64(i)/float64(*ndivs-1)*(tmax-tmin))
 		xs = append(xs, float64(i)/float64(*ndivs-1)*(xmax-xmin))
 	}
 
-	b := &RangeBoundary{Tol: 1e-9}
+	b := &RangeBoundary{Tol: 0}
 	// boundary conditions (dirichlet are deg C and neumann are W/m^2).
-	b.Add([]float64{tmin, 0}, []float64{tmin, 4}, Dirichlet, 0) // initial condition
-	b.Add([]float64{tmin, 0}, []float64{tmax, 0}, Dirichlet, 0) // left boundary
-	b.Add([]float64{tmin, 4}, []float64{tmax, 4}, Dirichlet, 0) // right boundary
-
-	xmid := (xmax - xmin) / 2.
-	tmid := (tmax - tmin) / 2.
-	pts := [][]float64{{tmin, xmin}, {tmin, xmid}, {tmin, xmax}, {tmid, xmax}, {tmax, xmax}, {tmax, xmid}, {tmax, xmin}, {tmid, 0}, {tmid, xmid}}
-	for _, p := range pts {
-		fmt.Printf("bc[%v]=%v\n", p, b.Val(p))
-		switch b.Type(p) {
-		case Interior:
-			fmt.Println("    Interior")
-		case Dirichlet:
-			fmt.Println("    Dirichlet")
-		case Neumann:
-			fmt.Println("    Neumann")
-		}
-	}
+	b.Add([]float64{tmin, xmin}, []float64{tmax, xmin}, Dirichlet, 0)  // left boundary
+	b.Add([]float64{tmin, xmax}, []float64{tmax, xmax}, Dirichlet, 0)  // right boundary
+	b.Add([]float64{tmin, xmin}, []float64{tmin, xmax}, Dirichlet, 10) // initial condition
 
 	hc := &TimeHeatConduction{ // properties are for water ish
-		Density:      ConstVal(1), // kg/m^3
-		SpecificHeat: ConstVal(1), // J/kg/K
-		Conductivity: ConstVal(1), // W/(m*K)
-		Source:       ConstVal(1), // W/m^3
+		Density:      ConstVal(1000),   // kg/m^3
+		SpecificHeat: ConstVal(4181.4), // J/kg/K
+		Conductivity: ConstVal(.591),   // W/(m*K)
+		Source:       ConstVal(0),      // W/m^3
 		Boundary:     b,
 	}
 

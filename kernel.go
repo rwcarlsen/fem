@@ -366,12 +366,10 @@ func (hc *TimeHeatConduction) VolIntU(p *KernelParams) float64 {
 }
 
 func (hc *TimeHeatConduction) VolInt(p *KernelParams) float64 {
-	return -p.W * hc.Source.Val(p.X)
+	return p.W * hc.Source.Val(p.X)
 }
 
-func (hc *TimeHeatConduction) BoundaryIntU(p *KernelParams) float64 {
-	return 0
-}
+func (hc *TimeHeatConduction) BoundaryIntU(p *KernelParams) float64 { return 0 }
 
 func (hc *TimeHeatConduction) BoundaryInt(p *KernelParams) float64 {
 	return p.W * hc.Boundary.Val(p.X)
