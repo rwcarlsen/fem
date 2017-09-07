@@ -20,6 +20,11 @@ type Range struct {
 	Up  []float64
 }
 
+// RangeBoundary defines boundary conditions as constant in each hypersurface of a set of several
+// hypersurfaces.  The surfaces are defined with upper and lower bounds parallel to each dimension
+// of the problem effectively boxing in regions.  The user is responsible for making these regions
+// surfaces (i.e. n-1 dimensional where n is the problem dimension) by making the upper and lower
+// bounds equal in exactly one dimension for each boundary segment.
 type RangeBoundary struct {
 	Low   [][]float64
 	Up    [][]float64
@@ -66,6 +71,9 @@ func (r *RangeBoundary) Val(x []float64) float64 {
 	return r.Vals[index]
 }
 
+// StructuredBoundary defines boundary conditions as constant on the boundary faces/surfaces of an
+// n-dimensional hypercube.  The length of every slice must be the same as each other representing
+// the dimension of the hypercube.
 type StructuredBoundary struct {
 	Tol      float64
 	Low      []float64
