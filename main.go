@@ -85,7 +85,7 @@ func check(err error) {
 func TestHeatKernelTransient() {
 	ts := []float64{}
 	xs := []float64{}
-	const tmin, tmax = 0, 400
+	const tmin, tmax = 0, 40
 	const xmin, xmax = 0, 4
 	for i := 0; i < *ndivs; i++ {
 		ts = append(ts, float64(i)/float64(*ndivs-1)*(tmax-tmin))
@@ -94,9 +94,9 @@ func TestHeatKernelTransient() {
 
 	b := &RangeBoundary{Tol: 0}
 	// boundary conditions (dirichlet are deg C and neumann are W/m^2).
+	b.Add([]float64{tmin, xmin}, []float64{tmin, xmax}, Dirichlet, 10) // initial condition
 	b.Add([]float64{tmin, xmin}, []float64{tmax, xmin}, Dirichlet, 0)  // left boundary
 	b.Add([]float64{tmin, xmax}, []float64{tmax, xmax}, Dirichlet, 0)  // right boundary
-	b.Add([]float64{tmin, xmin}, []float64{tmin, xmax}, Dirichlet, 10) // initial condition
 
 	hc := &TimeHeatConduction{ // properties are for water ish
 		Density:      ConstVal(1000),   // kg/m^3
