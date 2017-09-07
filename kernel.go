@@ -338,7 +338,7 @@ func (hc *HeatConduction) VolInt(p *KernelParams) float64 {
 func (hc *HeatConduction) BoundaryIntU(p *KernelParams) float64 { return 0 }
 
 func (hc *HeatConduction) BoundaryInt(p *KernelParams) float64 {
-	return p.W * hc.Boundary.Val(p.X)
+	return -p.W * hc.Boundary.Val(p.X)
 }
 
 // TimeHeatConduction implements heat conduction physics with time as the first dimension.
@@ -372,5 +372,5 @@ func (hc *TimeHeatConduction) VolInt(p *KernelParams) float64 {
 func (hc *TimeHeatConduction) BoundaryIntU(p *KernelParams) float64 { return 0 }
 
 func (hc *TimeHeatConduction) BoundaryInt(p *KernelParams) float64 {
-	return p.W * hc.Boundary.Val(p.X)
+	return -p.W * hc.Boundary.Val(p.X)
 }

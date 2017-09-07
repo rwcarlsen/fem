@@ -28,7 +28,7 @@ func TestMeshSolve(t *testing.T) {
 			Left:     Dirichlet,
 			LeftVal:  0,
 			Right:    Neumann,
-			RightVal: 5,
+			RightVal: -5,
 			Want:     []float64{0, 145, 190},
 		}, {
 			Order:    2, // quadratic
@@ -38,7 +38,7 @@ func TestMeshSolve(t *testing.T) {
 			Left:     Dirichlet,
 			LeftVal:  0,
 			Right:    Neumann,
-			RightVal: 5,
+			RightVal: -5,
 			Want:     []float64{0, 85, 145, 180, 190},
 		}, {
 			Order:    2, // quadratic
@@ -48,7 +48,7 @@ func TestMeshSolve(t *testing.T) {
 			Left:     Dirichlet,
 			LeftVal:  0,
 			Right:    Neumann,
-			RightVal: 5,
+			RightVal: -5,
 			Want:     []float64{0, 145, 190},
 		},
 	}

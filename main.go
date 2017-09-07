@@ -141,7 +141,7 @@ func TestHeatKernel() {
 			LeftVal:   0, // deg C
 			LeftType:  Dirichlet,
 			Right:     xs[len(xs)-1],
-			RightVal:  5, // W/m^2
+			RightVal:  -5, // W/m^2
 			RightType: Neumann,
 		},
 	}

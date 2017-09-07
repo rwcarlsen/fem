@@ -57,7 +57,7 @@ func benchSolveN(n int) func(b *testing.B) {
 		hc := &HeatConduction{
 			K:        ConstVal(2),  // W/(m*C)
 			S:        ConstVal(50), // W/m^3
-			Boundary: NewBoundary1D(xs, 0, 5, Dirichlet, Neumann),
+			Boundary: NewBoundary1D(xs, 0, -5, Dirichlet, Neumann),
 		}
 
 		b.ResetTimer()
@@ -82,7 +82,7 @@ func benchInterpolateN(n int) func(b *testing.B) {
 		hc := &HeatConduction{
 			K:        ConstVal(2),  // W/(m*C)
 			S:        ConstVal(50), // W/m^3
-			Boundary: NewBoundary1D(xs, 0, 5, Dirichlet, Neumann),
+			Boundary: NewBoundary1D(xs, 0, -5, Dirichlet, Neumann),
 		}
 		mesh.Solve(hc)
 
