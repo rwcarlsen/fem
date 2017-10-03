@@ -325,12 +325,6 @@ func (e *ElementND) Coord(x, refx []float64, id CoordId) []float64 {
 	if x == nil {
 		x = make([]float64, e.NDim)
 	} else {
-		if id >= 0 && e.cache.HaveCoord[id] {
-			for i, v := range e.cache.Coords[id] {
-				x[i] = v
-			}
-			return x
-		}
 		for i := range x {
 			x[i] = 0
 		}
@@ -340,14 +334,6 @@ func (e *ElementND) Coord(x, refx []float64, id CoordId) []float64 {
 		val := n.ShapeFunc.Value(refx, id)
 		for i := 0; i < e.NDim; i++ {
 			x[i] += val * n.X[i]
-		}
-	}
-
-	if id >= 0 {
-		e.cache.HaveCoord[id] = true
-		cache := e.cache.Coords[id]
-		for i, v := range x {
-			cache[i] = v
 		}
 	}
 
@@ -373,7 +359,7 @@ func (e *ElementND) IntegrateForce(k Kernel, wNode int, skipOnBoundary bool) flo
 func (e *ElementND) integrateBoundary(k Kernel, wNode, uNode int) float64 {
 	e.Cache() // force initialization of cache
 	nquadpoints := e.cache.NQuadPointsDim
-	locid := CoordId(nquadpoints)
+	locid := CoordId(nquadpoints) // start counting where the volume integral left off
 	fi := &FaceIntegrator{
 		Elem: e,
 		W:    e.Nds[wNode],
@@ -404,7 +390,7 @@ func (e *ElementND) integrateVol(k Kernel, wNode, uNode int) float64 {
 	var locid CoordId
 
 	fn := func(refxs []float64) float64 {
-		e.Coord(e.cache.Pars.X, refxs, locid)
+		e.cache.Pars.X = e.Coord(e.cache.Pars.X, refxs, locid)
 
 		jac, jacdet := Jacobian(e, refxs, locid)
 		// determinant of jacobian to convert from ref element integral to
@@ -473,9 +459,6 @@ type ElementCache struct {
 	// Coords is meant to cache real coordinates (for given reference coordinates) for each
 	// CoordId. It contains one entry each CoordId.
 	Coords [][]float64
-	// HaveCoord contains whether or not a real coordinate (for a given reference coordinate) has
-	// been cached for a particular CoordId (the array index)
-	HaveCoord []bool
 	// Pars is a kernel params object that can be reused by elements for integration purposes.
 	Pars *KernelParams
 	// number of quad points per dimension
@@ -494,7 +477,6 @@ func (c *ElementCache) Init(ndim, nquadpointsdim int, maxcoordid CoordId) {
 	c.NQuadPointsDim = nquadpointsdim
 
 	c.SliceNDim = make([]float64, ndim)
-	c.HaveCoord = make([]bool, maxcoordid)
 	c.Coords = make([][]float64, maxcoordid)
 	c.HaveJac = make([]bool, maxcoordid)
 	c.Jacs = make([]*mat64.Dense, maxcoordid)
