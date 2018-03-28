@@ -65,16 +65,13 @@ func (c LagrangeNDCache) New(order, index int) *LagrangeND {
 }
 
 type LagrangeND struct {
+
 	// Index indicates for which of the nodes the shape function takes on the value 1.0.  For
 	// Index=0, x=-1 and y=-1.  Subsequent (increasing) Index numbers indicate the nodes running
-	// counter-clockwise from left to right (increasing x) in rows from bottom to top (increasing
-	// y).  Index runs from zero to (Order+1)^2-1 inclusive.
-	// Boundary nodes can be identified by the following createria:
+	// from left to right (increasing x) in dimensions 1 to ndim. Index runs from zero to
+	// (Order+1)^ndim-1 inclusive.  Boundary nodes can be identified by the following createrion:
 	//
-	//    * Bottom: Index/3==0
-	//    * Top: Index/3==Order
-	//    * Left: Index%3==O
-	//    * Right: Index%3==Order
+	//    Index/(Order+1)^n + Index%(Order+1)^n == 0 or Order
 	Index int
 	Order int
 	Safe  bool
