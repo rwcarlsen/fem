@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/gonum/matrix/mat64"
 	"github.com/rwcarlsen/fem/sparse"
 )
 
@@ -240,8 +241,9 @@ func (m *Mesh) Solve(k Kernel) error {
 		}
 	}
 
-	//fmt.Printf("condition number is %v\n", mat64.Cond(AA, 1))
-	//fmt.Printf("AA=\n% .2v\n", mat64.Formatted(AA))
+	fmt.Printf("condition number is %v\n", mat64.Cond(AA, 1))
+	fmt.Printf("AA=\n% .2v\n", mat64.Formatted(AA))
+	fmt.Printf("bb=\n% .2v\n", bb)
 
 	// solve symmetric system
 	x, err := solver.Solve(AA, bb)
@@ -313,15 +315,25 @@ func (m *Mesh) StiffnessMatrix(k Kernel) *sparse.Sparse {
 	size := m.NumDOF()
 	mat := sparse.NewSparse(size)
 
+	for i := 0; i < len(m.indexNode); i++ {
+		fmt.Printf("node %v: x = %v\n", i, m.indexNode[i][0].X)
+	}
+
+	for e, elem := range m.Elems {
+		for i, _ := range elem.Nodes() {
+			a := m.nodeId(e, i)
+			for j := 0; j < len(elem.Nodes()); j++ {
+				b := m.nodeId(e, j)
+				v := elem.IntegrateStiffness(k, i, j, m.notEdges[e])
+				//fmt.Printf("i=%v, j=%v, a=%v, b=%v, v=%v\n", i, j, a, b, v)
+				mat.Set(a, b, mat.At(a, b)+v)
+			}
+		}
+		fmt.Printf("element %v:\n% .2v\n", e, mat64.Formatted(mat))
+	}
 	for e, elem := range m.Elems {
 		for i, n := range elem.Nodes() {
 			a := m.nodeId(e, i)
-			for j := i; j < len(elem.Nodes()); j++ {
-				b := m.nodeId(e, j)
-				v := elem.IntegrateStiffness(k, i, j, m.notEdges[e])
-				mat.Set(a, b, mat.At(a, b)+v)
-				mat.Set(b, a, mat.At(a, b))
-			}
 			if ok, _ := k.IsDirichlet(n.X); ok {
 				for _, nonzero := range mat.SweepRow(a) {
 					nonzero.Val = 0

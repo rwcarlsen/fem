@@ -85,24 +85,32 @@ func check(err error) {
 func TestHeatKernelTransient() {
 	ts := []float64{}
 	xs := []float64{}
-	const tmin, tmax = 0, 40
-	const xmin, xmax = 0, 4
+	const tmin, tmax = 0, 200
+	const xmin, xmax = 0, 1
 	for i := 0; i < *ndivs; i++ {
 		ts = append(ts, float64(i)/float64(*ndivs-1)*(tmax-tmin))
 		xs = append(xs, float64(i)/float64(*ndivs-1)*(xmax-xmin))
 	}
 
-	b := &RangeBoundary{Tol: 0}
+	b := &RangeBoundary{Tol: 1e-10}
 	// boundary conditions (dirichlet are deg C and neumann are W/m^2).
 	b.Add([]float64{tmin, xmin}, []float64{tmin, xmax}, Dirichlet, 10) // initial condition
 	b.Add([]float64{tmin, xmin}, []float64{tmax, xmin}, Dirichlet, 0)  // left boundary
 	b.Add([]float64{tmin, xmax}, []float64{tmax, xmax}, Dirichlet, 0)  // right boundary
 
+	//hc := &TimeHeatConduction{ // properties are for water ish
+	//	Density:      ConstVal(1000),   // kg/m^3
+	//	SpecificHeat: ConstVal(4181.4), // J/kg/K
+	//	Conductivity: ConstVal(.591),   // W/(m*K)
+	//	Source:       ConstVal(0),      // W/m^3
+	//	Boundary:     b,
+	//}
+
 	hc := &TimeHeatConduction{ // properties are for water ish
-		Density:      ConstVal(1000),   // kg/m^3
-		SpecificHeat: ConstVal(4181.4), // J/kg/K
-		Conductivity: ConstVal(.591),   // W/(m*K)
-		Source:       ConstVal(0),      // W/m^3
+		Density:      ConstVal(1),    // kg/m^3
+		SpecificHeat: ConstVal(0002), // J/kg/K
+		Conductivity: ConstVal(1),    // W/(m*K)
+		Source:       ConstVal(0),    // W/m^3
 		Boundary:     b,
 	}
 
@@ -131,18 +139,18 @@ func TestHeatKernelTransient() {
 func TestHeatKernel() {
 	xs := []float64{}
 	for i := 0; i < *ndivs; i++ {
-		xs = append(xs, float64(i)/float64(*ndivs-1)*4)
+		xs = append(xs, float64(i)/float64(*ndivs-1)*1)
 	}
 	hc := &HeatConduction{
-		K: ConstVal(2),  // W/(m*C)
-		S: ConstVal(50), // W/m^3
+		K: &SecVal{X: []float64{0, .5, 1}, Y: []float64{1, 2}}, // W/(m*C)
+		S: ConstVal(0),                                         // W/m^3
 		Boundary: &Boundary1D{
 			Left:      xs[0],
 			LeftVal:   0, // deg C
 			LeftType:  Dirichlet,
 			Right:     xs[len(xs)-1],
-			RightVal:  -5, // W/m^2
-			RightType: Neumann,
+			RightVal:  1, // W/m^2
+			RightType: Dirichlet,
 		},
 	}
 	mesh, err := NewMeshStructured(*order, xs)

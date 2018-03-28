@@ -370,6 +370,7 @@ func (hc *TimeHeatConduction) IsDirichlet(x []float64) (bool, float64) {
 func (hc *TimeHeatConduction) VolIntU(p *KernelParams) float64 {
 	spatial := Dot(p.GradW[1:], p.GradU[1:]) * hc.Conductivity.Val(p.X)
 	time := p.W * hc.Density.Val(p.X) * hc.SpecificHeat.Val(p.X) * p.GradU[0]
+	//fmt.Printf("contribution x=%v: spatial=%v, time=%v\n", p.X, spatial, time)
 	return spatial + time
 }
 
